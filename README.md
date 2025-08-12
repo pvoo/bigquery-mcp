@@ -14,27 +14,33 @@ With other solutions I ran into issues navigating larger projects, where too muc
 
 **Prerequisites:** Python 3.10+ and [uv](https://github.com/astral-sh/uv) package manager
 
-### 🚀 Minimal Setup (2 steps)
+### 🚀 Quick Setup
 
-**Step 1: Authenticate**
+**Option 1: Pull direct from GitHub**
 ```bash
-# Option A: Google Cloud CLI (recommended)
+# 1. Authenticate
 gcloud auth application-default login
 
-# Option B: Service account key
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
-```
-
-**Step 2: Run**
-```bash
-# Direct from GitHub (no cloning needed)
+# 2. Run server
 uv run --with 'bigquery-mcp @ git+https://github.com/pvoo/bigquery-mcp.git' \
   bigquery-mcp --project YOUR_PROJECT --location US
-
-# Test it works
-uv run --with 'bigquery-mcp @ git+https://github.com/pvoo/bigquery-mcp.git' \
-  bigquery-mcp --project YOUR_PROJECT --location US --check-auth
 ```
+
+**Option 2: Clone locally (development setup)**
+```bash
+# 1. Clone and setup
+git clone https://github.com/pvoo/bigquery-mcp.git
+cd bigquery-mcp
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your project and location
+
+# 3. Run or inspect
+make run      # Start server
+make inspect  # Open MCP inspector
+```
+
 
 ### 🔧 MCP Client Configuration
 
