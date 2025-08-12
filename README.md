@@ -74,11 +74,6 @@ git clone https://github.com/pvoo/bigquery-mcp.git
 }
 ```
 
-**Config file locations:**
-- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-- **Linux:** `~/.config/Claude/claude_desktop_config.json`
-
 ### 🧪 Test Your Setup
 
 ```bash
@@ -253,10 +248,9 @@ make check    # Quality checks
 
 **Found an issue or have a feature request?**
 - 🐛 **Bug reports:** [Open an issue](https://github.com/pvoo/bigquery-mcp/issues)
-- 💡 **Feature requests:** [Start a discussion](https://github.com/pvoo/bigquery-mcp/discussions)
 - 🔧 **Code improvements:** Submit a pull request
 - 📖 **Documentation:** See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
-**🌟 Star this repo if it helps you!** • [View on GitHub](https://github.com/pvoo/bigquery-mcp)
+**🌟 Star this repo if it helps you!**
