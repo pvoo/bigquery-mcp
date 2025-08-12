@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  bigquery-mcp:
+    build: ..
+    environment:
+      # Required: Set your Google Cloud project ID
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID:-your-project-id}
+
+      # Required: Set BigQuery location (US, EU, asia-northeast1, etc.)
+      - BIGQUERY_LOCATION=${BIGQUERY_LOCATION:-US}
+
+      # Optional: Path to service account key (if not using default credentials)
+      # - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/key.json
+
+      # Optional: Override default configuration
+      # - BIGQUERY_MAX_RESULTS=50
+      # - BIGQUERY_LIST_MAX_RESULTS=1000
+      # - BIGQUERY_SAMPLE_ROWS=5
+
+    # Mount service account key if using one
+    # volumes:
+    #   - ./credentials/key.json:/app/credentials/key.json:ro
+
+    # For development: mount source code
+    # volumes:
+    #   - ../src:/app/src:ro
+
+    # Network mode for MCP communication
+    network_mode: host
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Resource limits (optional)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1'
+    #       memory: 512M
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 256M

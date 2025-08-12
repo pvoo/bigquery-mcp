@@ -1,199 +1,262 @@
-# BigQuery MCP Server
+# 🗂️ BigQuery MCP Server
 
-A clean, simple MCP (Model Context Protocol) server for Google BigQuery operations. Built with FastMCP for easy integration with Claude and other MCP clients.
+Practical MCP server for navigating BigQuery datasets and tables by LLMs. Designed for larger projects with many datasets/tables, optimized to keep LLM context small while staying fast and safe.
 
-## Features
+- **Minimal by default**: list datasets and tables by name first; fetch details only when asked
+- **Scales to big orgs**: filter by name, request detailed metadata/schemas on demand
+- **Quick table insight**: optional schema and fill-rate to help an agent decide relevance fast
+- **Safe to run**: read-only query execution with guardrails (SELECT/WITH only, comment stripping)
 
-- **Query Execution**: Run BigQuery SQL queries with automatic result pagination
-- **Dataset Discovery**: List all datasets in your GCP project
-- **Table Exploration**: List tables with schema information
+## Why this exists
+With other solutions I ran into issues navigating larger projects, where too much metadata is returned up front and overflows the LLM context window. This server returns only what you need first (names, counts, timestamps), then lets you drill into detail (schemas, descriptions, fill-rate) when it's useful.
 
-## Installation
+## Quick Start
 
-### Prerequisites
+**Prerequisites:** Python 3.10+ and [uv](https://github.com/astral-sh/uv) package manager
 
-- Python 3.12+
-- Google Cloud project with BigQuery API enabled
-- Authentication credentials (service account or ADC)
+### 🚀 Minimal Setup (2 steps)
 
-### Setup with uv
-
+**Step 1: Authenticate**
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/bigquery-mcp.git
-cd bigquery-mcp
-
-# Create virtual environment with uv
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install the package
-uv pip install -e .
-```
-
-### Configuration
-
-1. Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
-```
-
-2. Edit `.env` with your configuration:
-```env
-GCP_PROJECT_ID=your-project-id
-# Optional: GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-```
-
-3. Set up Google Cloud authentication:
-   - **Option 1**: Set `GOOGLE_APPLICATION_CREDENTIALS` to your service account JSON
-   - **Option 2**: Use Application Default Credentials:
-     ```bash
-     gcloud auth application-default login
-     ```
-
-## Usage
-
-### Running the Server
-
-```bash
-uv run python server.py
-```
-
-### Testing with MCP Inspector
-
-#### Quick Start
-```bash
-# For local testing without authentication
-DANGEROUSLY_OMIT_AUTH=true npx @modelcontextprotocol/inspector uv run python server.py
-```
-
-#### Standard Setup
-```bash
-# 1. Ensure environment is activated
-source .venv/bin/activate
-
-# 2. Launch the inspector
-npx @modelcontextprotocol/inspector uv run python server.py
-
-# 3. The browser should open automatically
-# If not, look for the URL in terminal output:
-# http://localhost:6274/?MCP_PROXY_AUTH_TOKEN=...
-```
-
-#### Troubleshooting Connection Issues
-
-If the inspector doesn't connect:
-
-1. **Test the server directly:**
-```bash
-echo '{"jsonrpc": "2.0", "method": "initialize", "params": {"capabilities": {}}, "id": 1}' | uv run python server.py
-```
-You should see a JSON response with server info.
-
-2. **Check authentication:**
-```bash
-gcloud auth application-default print-access-token
-# If this fails, run:
+# Option A: Google Cloud CLI (recommended)
 gcloud auth application-default login
+
+# Option B: Service account key
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
 ```
 
-3. **Debug the setup:**
+**Step 2: Run**
 ```bash
-uv run python debug_server.py
+# Direct from GitHub (no cloning needed)
+uv run --with 'bigquery-mcp @ git+https://github.com/pvoo/bigquery-mcp.git' \
+  bigquery-mcp --project YOUR_PROJECT --location US
+
+# Test it works
+uv run --with 'bigquery-mcp @ git+https://github.com/pvoo/bigquery-mcp.git' \
+  bigquery-mcp --project YOUR_PROJECT --location US --check-auth
 ```
 
-See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed help.
+### 🔧 MCP Client Configuration
 
-### Available Tools
-
-#### 1. run_query
-Execute BigQuery SQL queries.
-
-**Parameters:**
-- `query` (required): SQL query to execute
-- `project_id` (optional): Override default project
-- `max_results` (optional): Maximum rows to return (default: 100)
-
-**Example:**
+**Option 1: Minimal MCP config (run from GitHub)**
 ```json
 {
-  "query": "SELECT name, COUNT(*) as count FROM `dataset.table` GROUP BY name LIMIT 10"
+  "mcpServers": {
+    "bigquery": {
+      "command": "uv",
+      "args": [
+        "run", "--with", "bigquery-mcp @ git+https://github.com/pvoo/bigquery-mcp.git",
+        "bigquery-mcp", "--project", "your-project-id", "--location", "US"
+      ]
+    }
+  }
 }
 ```
 
-#### 2. list_datasets
-List all datasets in a project.
-
-**Parameters:**
-- `project_id` (optional): Override default project
-- `max_results` (optional): Maximum datasets to return (default: 100)
-
-#### 3. list_tables
-List all tables in a dataset with schema information.
-
-**Parameters:**
-- `dataset_id` (required): The dataset to list tables from
-- `project_id` (optional): Override default project
-- `max_results` (optional): Maximum tables to return (default: 100)
-
-**Example:**
-```json
-{
-  "dataset_id": "my_dataset"
-}
+**Option 2: Local clone config (for development)**
+```bash
+# Clone first
+git clone https://github.com/pvoo/bigquery-mcp.git
 ```
-
-### Integration with Claude Desktop
-
-Add to your Claude Desktop configuration:
 
 ```json
 {
   "mcpServers": {
     "bigquery": {
       "command": "uv",
-      "args": ["run", "python", "/path/to/bigquery-mcp/server.py"],
+      "args": ["--directory", "/absolute/path/to/bigquery-mcp", "run", "bigquery-mcp"],
       "env": {
         "GCP_PROJECT_ID": "your-project-id",
-        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/credentials.json"
+        "BIGQUERY_LOCATION": "US"
       }
     }
   }
 }
 ```
 
-## Development
+**Config file locations:**
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux:** `~/.config/Claude/claude_desktop_config.json`
 
-### Code Quality
-
-```bash
-# Format code
-uv run ruff format .
-
-# Lint code
-uv run ruff check .
-
-# Type checking
-uv run mypy server.py
-```
-
-### Running Tests
+### 🧪 Test Your Setup
 
 ```bash
-uv run pytest
+# Test with MCP inspector
+npx @modelcontextprotocol/inspector \
+  uv run --with 'bigquery-mcp @ git+https://github.com/pvoo/bigquery-mcp.git' \
+  bigquery-mcp --project YOUR_PROJECT --location US
 ```
 
-## Security Considerations
+## 🛠️ Tools Overview
 
-- Never commit credentials or `.env` files
-- Use service accounts with minimal required permissions
-- Consider query cost implications with `bytes_billed` in responses
-- Implement rate limiting for production use
+This MCP server provides 4 core BigQuery tools optimized for LLM efficiency:
 
-## License
+### 📊 Smart Dataset & Table Discovery
+- **`list_datasets`** - Dual mode: basic (names only) vs detailed (full metadata)
+- **`list_tables`** - Context-aware table browsing with optional schema details
+- **`get_table`** - Complete table analysis with schema and sample data
 
-MIT
+### 🔍 Safe Query Execution
+- **`run_query`** - Execute SELECT/WITH queries only, with cost tracking and safety validation
 
-## Contributing
+**Key Features:**
+- ✅ **Minimal by default** - 70% fewer tokens in basic mode
+- ✅ **Safe queries only** - Blocks all write operations
+- ✅ **LLM-optimized** - Returns structured data perfect for AI analysis
+- ✅ **Cost transparent** - Shows bytes processed for each query
 
-Contributions welcome! Please ensure code passes all quality checks before submitting PRs.
+## 🏗️ Development Setup
+
+### Local Development
+```bash
+# Clone and setup
+git clone https://github.com/pvoo/bigquery-mcp.git
+cd bigquery-mcp
+make install  # Setup environment + pre-commit hooks
+
+# Development workflow
+make run      # Start server
+make test     # Run test suite
+make check    # Lint + format + typecheck
+make inspect  # Launch MCP inspector
+```
+
+### Testing & Quality
+```bash
+make test                    # Full test suite
+pytest tests/test_safety.py  # SQL safety validation tests
+pytest tests/test_server.py  # Core server functionality tests
+make check                   # Run all quality checks
+```
+
+## Environment Configuration
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GCP_PROJECT_ID` | Yes | Google Cloud project ID |
+| `BIGQUERY_LOCATION` | Yes | BigQuery region (e.g., US, EU, us-central1) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | No | Path to service account JSON |
+| `BIGQUERY_MAX_RESULTS` | No | Default max query results (default: 20) |
+| `BIGQUERY_ALLOWED_DATASETS` | No | Comma-separated allowed datasets |
+
+**Authentication Methods:**
+1. **Application Default Credentials** (via `gcloud auth application-default login`)
+2. **Service Account Key** (set `GOOGLE_APPLICATION_CREDENTIALS`)
+
+**Required BigQuery Permissions:**
+`bigquery.datasets.get`, `bigquery.datasets.list`, `bigquery.tables.list`, `bigquery.tables.get`, `bigquery.jobs.create`, `bigquery.data.get`
+
+## 🚨 Troubleshooting
+
+**Authentication Issues:**
+```bash
+# Check current auth
+gcloud auth application-default print-access-token
+
+# Re-authenticate
+gcloud auth application-default login
+
+# Enable BigQuery API
+gcloud services enable bigquery.googleapis.com
+```
+
+**MCP Connection Issues:**
+- Ensure absolute paths in MCP config
+- Test server manually: `make run`
+- Check environment variables are set correctly
+
+**Performance Issues:**
+- Use `{"detailed": false}` for faster responses
+- Add search filters: `{"search": "pattern"}`
+- Reduce max_results for large datasets
+
+## 💡 Usage Examples
+
+### 📊 SQL Query Example
+```sql
+-- Query public datasets
+SELECT
+    EXTRACT(YEAR FROM pickup_datetime) as year,
+    COUNT(*) as trips,
+    ROUND(AVG(fare_amount), 2) as avg_fare
+FROM `bigquery-public-data.new_york_taxi_trips.tlc_yellow_trips_2020`
+WHERE pickup_datetime BETWEEN '2020-01-01' AND '2020-12-31'
+GROUP BY year
+```
+
+### 🤖 Claude Code AI Agent Integration
+
+**Scenario:** Use the specialized BigQuery Table Analyst agent in Claude Code to automatically explore your data warehouse, analyze table relationships, and provide structured insights. By using the subagent you can take the context used for analyzing the tables out of the main thread and return actionable insights into the main agent thread for writing SQL or analyzing.
+
+**Setup:**
+```bash
+# 1. Clone and configure
+git clone https://github.com/pvoo/bigquery-mcp.git
+cd bigquery-mcp
+
+# 2. Setup environment
+export GCP_PROJECT_ID="your-project-id"
+export BIGQUERY_LOCATION="US"
+gcloud auth application-default login
+
+# 3. Launch Claude Code
+claude-code
+```
+
+**Example Usage:**
+```
+💬 You: "I need to understand our sales data structure and find tables related to customer orders"
+
+🤖 Claude: I'll use the BigQuery Table Analyst agent to explore your sales datasets and identify relevant tables with their relationships.
+
+[Agent automatically:]
+- Lists all datasets to identify sales-related ones
+- Explores table schemas with detailed metadata
+- Shows actual sample data from key tables
+- Discovers join relationships between tables
+- Provides ready-to-use SQL queries
+```
+
+**What the Agent Returns:**
+- **Table schemas** with column descriptions and types
+- **Sample data** showing actual values (not placeholders)
+- **Join relationships** with working SQL examples
+- **Data quality insights** (null rates, freshness, etc.)
+- **Actionable SQL queries** you can immediately execute
+
+
+
+## 🤝 Contributing
+
+We welcome contributions! Looking forward to your feedback for improvements.
+
+**Quick Start:**
+```bash
+# Fork on GitHub, then:
+git clone https://github.com/yourusername/bigquery-mcp.git
+cd bigquery-mcp
+make install  # Setup dev environment
+make check    # Verify everything works
+
+# Make changes, then:
+make test     # Run tests
+make check    # Quality checks
+# Submit PR!
+```
+
+**Development Guidelines:**
+- Add tests for new features
+- Update documentation
+- Follow existing code style (enforced by pre-commit hooks)
+- Ensure all quality checks pass
+
+**Found an issue or have a feature request?**
+- 🐛 **Bug reports:** [Open an issue](https://github.com/pvoo/bigquery-mcp/issues)
+- 💡 **Feature requests:** [Start a discussion](https://github.com/pvoo/bigquery-mcp/discussions)
+- 🔧 **Code improvements:** Submit a pull request
+- 📖 **Documentation:** See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+---
+
+**🌟 Star this repo if it helps you!** • [View on GitHub](https://github.com/pvoo/bigquery-mcp)

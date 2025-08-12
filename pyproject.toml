@@ -1,39 +1,118 @@
+[project]
+name = "bigquery-mcp"
+version = "0.1.0"
+description = "BigQuery MCP server optimized for quick navigation of larger projects and datasets."
+authors = [{ name = "Paul van Oorschot", email = "fpgmaas@gmail.com" }]
+readme = "README.md"
+keywords = ['python']
+requires-python = ">=3.10,<4.0"
+classifiers = [
+    "Intended Audience :: Developers",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "python-dotenv==1.1.1",
+    "fastmcp==2.11.2",
+    "google-cloud-bigquery==3.35.1",
+]
+
+[project.scripts]
+bigquery-mcp = "bigquery_mcp.server:main"
+
+[project.urls]
+Homepage = "https://pvoo.github.io/bigquery-mcp/"
+Repository = "https://github.com/pvoo/bigquery-mcp"
+Documentation = "https://pvoo.github.io/bigquery-mcp/"
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.1",
+    "pytest-asyncio==1.1.0",
+    "pre-commit==4.3.0",
+    "tox-uv==1.27.0",
+    "mypy==1.17.1",
+    "ruff==0.12.8",
+    "types-PyYAML==6.0.12.20250809",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[project]
-name = "bigquery-mcp"
-version = "0.1.0"
-description = "A clean MCP server for Google BigQuery operations"
-readme = "README.md"
-requires-python = ">=3.12"
-license = { text = "MIT" }
-authors = [
-    { name = "Your Name", email = "your.email@example.com" }
-]
-dependencies = [
-    "fastmcp>=0.1.0",
-    "google-cloud-bigquery>=3.11.0",
-    "python-dotenv>=1.0.0",
-]
-
 [tool.hatch.build.targets.wheel]
-packages = ["."]
+packages = ["src/bigquery_mcp"]
 
-[project.optional-dependencies]
-dev = [
-    "ruff>=0.1.0",
-    "mypy>=1.0.0",
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
+[tool.mypy]
+files = ["src"]
+disallow_untyped_defs = true
+disallow_any_unimported = true
+no_implicit_optional = true
+check_untyped_defs = true
+warn_return_any = true
+warn_unused_ignores = true
+show_error_codes = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')"
 ]
 
 [tool.ruff]
-line-length = 88
-target-version = "py312"
+target-version = "py310"
+line-length = 120
+fix = true
 
-[tool.mypy]
-python_version = "3.12"
-strict = true
-ignore_missing_imports = true
+[tool.ruff.lint]
+select = [
+    # flake8-2020
+    "YTT",
+    # flake8-bandit
+    "S",
+    # flake8-bugbear
+    "B",
+    # flake8-builtins
+    "A",
+    # flake8-comprehensions
+    "C4",
+    # flake8-debugger
+    "T10",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+    # mccabe
+    "C90",
+    # pycodestyle
+    "E", "W",
+    # pyflakes
+    "F",
+    # pygrep-hooks
+    "PGH",
+    # pyupgrade
+    "UP",
+    # ruff
+    "RUF",
+    # tryceratops
+    "TRY",
+]
+ignore = [
+    # LineTooLong
+    "E501",
+    # DoNotAssignLambda
+    "E731",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S603", "S110", "TRY003"]
+
+[tool.ruff.format]
+preview = true
