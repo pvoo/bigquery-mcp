@@ -2,13 +2,10 @@
 
 Practical MCP server for navigating BigQuery datasets and tables by LLMs. Designed for larger projects with many datasets/tables, optimized to keep LLM context small while staying fast and safe.
 
-- **Minimal by default**: list datasets and tables by name first; fetch details only when asked
+- **Minimal by default**: list datasets and tables names; fetch details only when asked
 - **Navigate larger projects**: filter by name, request detailed metadata/schemas on demand
-- **Quick table insight**: optional schema and fill-rate to help an agent decide relevance fast
+- **Quick table insight**: optional schema, column descriptions and fill-rate to help an agent decide relevance fast
 - **Safe to run**: read-only query execution with guardrails (SELECT/WITH only, comment stripping)
-
-## Why this exists
-With other solutions I ran into issues navigating larger projects, where too much metadata is returned up front and overflows the LLM context window. This server returns only what you need first (names, counts, timestamps), then lets you drill into detail (schemas, descriptions, fill-rate) when it's useful.
 
 ## Quick Start
 
@@ -22,7 +19,7 @@ With other solutions I ran into issues navigating larger projects, where too muc
 gcloud auth application-default login
 
 # 2. Run server
-uv run --with 'bigquery-mcp @ git+https://github.com/pvoo/bigquery-mcp.git' \
+uv run --with 'bigquery-mcp@git+https://github.com/pvoo/bigquery-mcp.git' \
   bigquery-mcp --project YOUR_PROJECT --location US
 ```
 
@@ -44,14 +41,15 @@ make inspect  # Open MCP inspector
 
 ### 🔧 MCP Client Configuration
 
-**Option 1: Minimal MCP config (run from GitHub)**
+**Option 1: Basic MCP config**
+Should work as mcp.json config for most tools like Cursor, Claude Code, etc.
 ```json
 {
   "mcpServers": {
     "bigquery": {
       "command": "uv",
       "args": [
-        "run", "--with", "bigquery-mcp @ git+https://github.com/pvoo/bigquery-mcp.git",
+        "run", "--with", "bigquery-mcp@git+https://github.com/pvoo/bigquery-mcp.git",
         "bigquery-mcp", "--project", "your-project-id", "--location", "US"
       ]
     }
@@ -131,7 +129,7 @@ pytest tests/test_server.py  # Core server functionality tests
 make check                   # Run all quality checks
 ```
 
-## Environment Configuration
+## Arguments available
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -165,7 +163,7 @@ gcloud services enable bigquery.googleapis.com
 **MCP Connection Issues:**
 - Ensure absolute paths in MCP config
 - Test server manually: `make run`
-- Check environment variables are set correctly
+- Check that project and location environment variables or args are set correctly
 
 **Performance Issues:**
 - Use `{"detailed": false}` for faster responses
@@ -186,7 +184,7 @@ WHERE pickup_datetime BETWEEN '2020-01-01' AND '2020-12-31'
 GROUP BY year
 ```
 
-### 🤖 Claude Code AI Agent Integration
+### 🤖 Example: Usage with Claude Code subagent
 
 **Scenario:** Use the specialized BigQuery Table Analyst agent in Claude Code to automatically explore your data warehouse, analyze table relationships, and provide structured insights. By using the subagent you can take the context used for analyzing the tables out of the main thread and return actionable insights into the main agent thread for writing SQL or analyzing.
 
