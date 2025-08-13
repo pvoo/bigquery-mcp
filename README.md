@@ -3,7 +3,7 @@
 Practical MCP server for navigating BigQuery datasets and tables by LLMs. Designed for larger projects with many datasets/tables, optimized to keep LLM context small while staying fast and safe.
 
 - **Minimal by default**: list datasets and tables by name first; fetch details only when asked
-- **Scales to big orgs**: filter by name, request detailed metadata/schemas on demand
+- **Navigate larger projects**: filter by name, request detailed metadata/schemas on demand
 - **Quick table insight**: optional schema and fill-rate to help an agent decide relevance fast
 - **Safe to run**: read-only query execution with guardrails (SELECT/WITH only, comment stripping)
 
