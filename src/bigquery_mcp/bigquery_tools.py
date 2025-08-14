@@ -188,13 +188,19 @@ def _calculate_column_fill_rates(
 
 
 def register_tools(mcp: FastMCP, bigquery_client: bigquery.Client, allowed_datasets: list[str] | None = None) -> None:  # noqa: C901
+    # If no allowed_datasets passed, check environment variable
+    if allowed_datasets is None:
+        env_datasets = os.getenv("BIGQUERY_ALLOWED_DATASETS")
+        if env_datasets:
+            allowed_datasets = [d.strip() for d in env_datasets.split(",") if d.strip()]
+
     @mcp.tool(description="Execute read-only BigQuery SQL queries with safety validation")
     async def run_query(
         query: Annotated[
             str, Field(description="BigQuery SQL SELECT query to execute (only read-only queries allowed)")
         ],
         max_results: Annotated[
-            int | None, Field(description="Maximum number of rows to return in the result set", default=None)
+            int | None, Field(description="(INTEGER) Maximum number of rows to return in the result set", default=None)
         ] = None,
     ) -> dict[str, Any]:
         """Execute read-only BigQuery SQL queries with safety validation.

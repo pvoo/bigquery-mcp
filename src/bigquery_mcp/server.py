@@ -31,12 +31,15 @@ def parse_arguments() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Environment Variables (can be overridden by CLI arguments):
-  GCP_PROJECT_ID               Google Cloud project ID
-  BIGQUERY_LOCATION            BigQuery location (e.g., 'US', 'EU', 'us-central1')
-  GOOGLE_APPLICATION_CREDENTIALS  Path to service account key file
-  BIGQUERY_MAX_RESULTS         Default max results for queries (default: 20)
-  BIGQUERY_LIST_MAX_RESULTS    Max results for list operations (default: 500)
-  BIGQUERY_SAMPLE_ROWS         Sample rows in table details (default: 3)
+  GCP_PROJECT_ID                    Google Cloud project ID
+  BIGQUERY_LOCATION                 BigQuery location (e.g., 'US', 'EU', 'us-central1')
+  GOOGLE_APPLICATION_CREDENTIALS    Path to service account key file
+  BIGQUERY_ALLOWED_DATASETS         Comma-separated list of allowed datasets
+  BIGQUERY_MAX_RESULTS              Max results for queries (default: 20)
+  BIGQUERY_LIST_MAX_RESULTS         Max results for basic list operations (default: 500)
+  BIGQUERY_LIST_MAX_RESULTS_DETAILED Max results for detailed list operations (default: 25)
+  BIGQUERY_SAMPLE_ROWS              Sample data rows in table details (default: 3)
+  BIGQUERY_SAMPLE_ROWS_FOR_STATS    Rows sampled for fill rates (default: 500)
 
 Examples:
   # Using environment variables
@@ -73,24 +76,45 @@ Examples:
     )
 
     parser.add_argument(
+        "--datasets",
+        nargs="+",
+        dest="allowed_datasets",
+        help="Restrict access to specific datasets (default: all datasets)",
+    )
+
+    parser.add_argument(
         "--max-results",
         type=int,
         dest="max_results",
-        help="Default max results for queries (overrides BIGQUERY_MAX_RESULTS env var)",
+        help="Max rows returned by run_query (default: 20)",
+    )
+
+    parser.add_argument(
+        "--list-max-results",
+        type=int,
+        dest="list_max_results",
+        help="Max results for basic list operations (default: 500)",
+    )
+
+    parser.add_argument(
+        "--detailed-list-max",
+        type=int,
+        dest="detailed_list_max",
+        help="Max results for detailed list operations (default: 25)",
     )
 
     parser.add_argument(
         "--sample-rows",
         type=int,
         dest="sample_rows",
-        help="Number of sample rows in table details (overrides BIGQUERY_SAMPLE_ROWS env var)",
+        help="Sample data rows returned in get_table (default: 3)",
     )
 
     parser.add_argument(
-        "--datasets",
-        nargs="+",
-        dest="allowed_datasets",
-        help="Limit access to specific datasets (space-separated list)",
+        "--stats-sample-size",
+        type=int,
+        dest="stats_sample_size",
+        help="Rows sampled for column fill rate calculations (default: 500)",
     )
 
     parser.add_argument(
@@ -103,12 +127,47 @@ Examples:
     return parser.parse_args()
 
 
+def _set_environment_overrides(
+    max_results: int | None = None,
+    list_max_results: int | None = None,
+    detailed_list_max: int | None = None,
+    sample_rows: int | None = None,
+    stats_sample_size: int | None = None,
+    key_file: str | None = None,
+    allowed_datasets: list[str] | None = None,
+) -> None:
+    """Set environment variables for configuration overrides."""
+    if max_results is not None:
+        os.environ["BIGQUERY_MAX_RESULTS"] = str(max_results)
+
+    if list_max_results is not None:
+        os.environ["BIGQUERY_LIST_MAX_RESULTS"] = str(list_max_results)
+
+    if detailed_list_max is not None:
+        os.environ["BIGQUERY_LIST_MAX_RESULTS_DETAILED"] = str(detailed_list_max)
+
+    if sample_rows is not None:
+        os.environ["BIGQUERY_SAMPLE_ROWS"] = str(sample_rows)
+
+    if stats_sample_size is not None:
+        os.environ["BIGQUERY_SAMPLE_ROWS_FOR_STATS"] = str(stats_sample_size)
+
+    if key_file:
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = key_file
+
+    if allowed_datasets:
+        os.environ["BIGQUERY_ALLOWED_DATASETS"] = ",".join(allowed_datasets)
+
+
 def run_server(
     project_id: str,
     location: str,
     key_file: str | None = None,
     max_results: int | None = None,
+    list_max_results: int | None = None,
+    detailed_list_max: int | None = None,
     sample_rows: int | None = None,
+    stats_sample_size: int | None = None,
     allowed_datasets: list[str] | None = None,
     check_auth_only: bool = False,
 ) -> None:
@@ -118,23 +177,24 @@ def run_server(
         project_id: Google Cloud project ID
         location: BigQuery location
         key_file: Optional path to service account key file
-        max_results: Optional override for default max results
-        sample_rows: Optional override for sample rows
+        max_results: Optional override for query max results
+        list_max_results: Optional override for basic list max results
+        detailed_list_max: Optional override for detailed list max results
+        sample_rows: Optional override for sample data rows
+        stats_sample_size: Optional override for stats sampling size
         allowed_datasets: Optional list of allowed dataset IDs
         check_auth_only: If True, only check authentication and exit
     """
     # Set environment variables for configuration overrides
-    if max_results is not None:
-        os.environ["BIGQUERY_MAX_RESULTS"] = str(max_results)
-
-    if sample_rows is not None:
-        os.environ["BIGQUERY_SAMPLE_ROWS"] = str(sample_rows)
-
-    if key_file:
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = key_file
-
-    if allowed_datasets:
-        os.environ["BIGQUERY_ALLOWED_DATASETS"] = ",".join(allowed_datasets)
+    _set_environment_overrides(
+        max_results=max_results,
+        list_max_results=list_max_results,
+        detailed_list_max=detailed_list_max,
+        sample_rows=sample_rows,
+        stats_sample_size=stats_sample_size,
+        key_file=key_file,
+        allowed_datasets=allowed_datasets,
+    )
 
     # Initialize BigQuery client with configured project
     bigquery_client = bigquery.Client(project=project_id)
@@ -228,7 +288,10 @@ def main() -> None:
             location=location,
             key_file=args.key_file,
             max_results=args.max_results,
+            list_max_results=args.list_max_results,
+            detailed_list_max=args.detailed_list_max,
             sample_rows=args.sample_rows,
+            stats_sample_size=args.stats_sample_size,
             allowed_datasets=args.allowed_datasets,
             check_auth_only=args.check_auth,
         )

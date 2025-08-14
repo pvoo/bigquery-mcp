@@ -13,14 +13,13 @@ Practical MCP server for navigating BigQuery datasets and tables by LLMs. Design
 
 ### 🚀 Quick Setup
 
-**Option 1: Pull direct from GitHub**
+**Option 1: Direct from PyPI (Recommended)**
 ```bash
 # 1. Authenticate
 gcloud auth application-default login
 
 # 2. Run server
-uv run --with 'bigquery-mcp@git+https://github.com/pvoo/bigquery-mcp.git' \
-  bigquery-mcp --project YOUR_PROJECT --location US
+uvx bigquery-mcp --project YOUR_PROJECT --location US
 ```
 
 **Option 2: Clone locally (development setup)**
@@ -38,26 +37,27 @@ make run      # Start server
 make inspect  # Open MCP inspector
 ```
 
-
 ### 🔧 MCP Client Configuration
 
-**Option 1: Basic MCP config**
-Should work as mcp.json config for most tools like Cursor, Claude Code, etc.
+**Option 1: PyPI package (Recommended)**
+Simplest setup using the published PyPI package:
 ```json
 {
   "mcpServers": {
     "bigquery": {
-      "command": "uv",
+      "command": "uvx",
       "args": [
-        "run", "--with", "bigquery-mcp@git+https://github.com/pvoo/bigquery-mcp.git",
-        "bigquery-mcp", "--project", "your-project-id", "--location", "US"
-      ]
+        "bigquery-mcp",
+        "--project", "your-project-id",
+        "--location", "US"
+     ]
     }
   }
 }
 ```
 
-**Option 2: Local clone config (for development)**
+
+**Option 2: Local clone (for development)**
 ```bash
 # Clone first
 git clone https://github.com/pvoo/bigquery-mcp.git
@@ -82,9 +82,49 @@ git clone https://github.com/pvoo/bigquery-mcp.git
 
 ```bash
 # Test with MCP inspector
-npx @modelcontextprotocol/inspector \
-  uv run --with 'bigquery-mcp @ git+https://github.com/pvoo/bigquery-mcp.git' \
-  bigquery-mcp --project YOUR_PROJECT --location US
+npx @modelcontextprotocol/inspector uvx bigquery-mcp --project YOUR_PROJECT --location US
+```
+
+## 🔧 Configuration Options
+
+All configuration can be set via CLI arguments or environment variables. CLI arguments take precedence.
+
+### Required Parameters
+```bash
+--project YOUR_PROJECT    # Google Cloud project ID
+--location US             # BigQuery location (US, EU, etc.)
+```
+
+### Optional Parameters
+```bash
+# Dataset Access Control
+--datasets dataset1 dataset2    # Restrict to specific datasets (default: all datasets)
+
+# Query & Result Limits
+--max-results 20                # Max rows returned by run_query (default: 20)
+--list-max-results 500          # Max results for basic list operations (default: 500)
+--detailed-list-max 25          # Max results for detailed list operations (default: 25)
+
+# Table Analysis
+--sample-rows 3                 # Sample data rows returned in get_table (default: 3)
+--stats-sample-size 500         # Rows sampled for column fill rate calculations (default: 500)
+
+# Authentication
+--key-file /path/to/key.json    # Service account key file (default: ADC)
+```
+
+### Environment Variables
+All CLI options have corresponding environment variables:
+```bash
+export GCP_PROJECT_ID=your-project
+export BIGQUERY_LOCATION=US
+export BIGQUERY_ALLOWED_DATASETS=dataset1,dataset2
+export BIGQUERY_MAX_RESULTS=20
+export BIGQUERY_LIST_MAX_RESULTS=500
+export BIGQUERY_LIST_MAX_RESULTS_DETAILED=25
+export BIGQUERY_SAMPLE_ROWS=3
+export BIGQUERY_SAMPLE_ROWS_FOR_STATS=500
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
 ```
 
 ## 🛠️ Tools Overview
@@ -129,22 +169,16 @@ pytest tests/test_server.py  # Core server functionality tests
 make check                   # Run all quality checks
 ```
 
-## Arguments available
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GCP_PROJECT_ID` | Yes | Google Cloud project ID |
-| `BIGQUERY_LOCATION` | Yes | BigQuery region (e.g., US, EU, us-central1) |
-| `GOOGLE_APPLICATION_CREDENTIALS` | No | Path to service account JSON |
-| `BIGQUERY_MAX_RESULTS` | No | Default max query results (default: 20) |
-| `BIGQUERY_ALLOWED_DATASETS` | No | Comma-separated allowed datasets |
+## 🔐 Authentication & Permissions
 
 **Authentication Methods:**
-1. **Application Default Credentials** (via `gcloud auth application-default login`)
-2. **Service Account Key** (set `GOOGLE_APPLICATION_CREDENTIALS`)
+1. **Application Default Credentials** (recommended): `gcloud auth application-default login`
+2. **Service Account Key**: Use `--key-file` or set `GOOGLE_APPLICATION_CREDENTIALS`
 
 **Required BigQuery Permissions:**
-`bigquery.datasets.get`, `bigquery.datasets.list`, `bigquery.tables.list`, `bigquery.tables.get`, `bigquery.jobs.create`, `bigquery.data.get`
+- `bigquery.datasets.get`, `bigquery.datasets.list`
+- `bigquery.tables.list`, `bigquery.tables.get`
+- `bigquery.jobs.create`, `bigquery.data.get`
 
 ## 🚨 Troubleshooting
 
