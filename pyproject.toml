@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "BigQuery MCP server optimized for quick navigation of larger projects and datasets."
 authors = [{ name = "Paul van Oorschot", email = "fpgmaas@gmail.com" }]
 readme = "README.md"
+license = "MIT"
 keywords = ['python']
 requires-python = ">=3.10,<4.0"
 classifiers = [
