@@ -4,14 +4,11 @@
       "command": "uv",
       "args": [
         "run",
-        "--with",
-        "bigquery-mcp @ git+https://github.com/pvoo/bigquery-mcp.git",
         "bigquery-mcp"
       ],
       "env": {
-        "GCP_PROJECT_ID": "your-project-id",
-        "BIGQUERY_LOCATION": "US",
-        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/application_default_credentials.json"
+        "GCP_PROJECT_ID": "bi-project-392012",
+        "BIGQUERY_LOCATION": "europe-west4"
       }
     }
   }

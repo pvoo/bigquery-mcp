@@ -67,7 +67,16 @@ def mock_bigquery_client():
 def env_vars():
     """Set up test environment variables."""
     original_env = os.environ.copy()
-    test_env = {"GCP_PROJECT_ID": "test-project", "BIGQUERY_LOCATION": "US"}
+    test_env = {
+        "GCP_PROJECT_ID": "test-project",
+        "BIGQUERY_LOCATION": "US",
+        "BIGQUERY_MAX_RESULTS": "20",
+        "BIGQUERY_LIST_MAX_RESULTS": "500",
+        "BIGQUERY_LIST_MAX_RESULTS_DETAILED": "25",
+        "BIGQUERY_SAMPLE_ROWS": "3",
+        "BIGQUERY_SAMPLE_ROWS_FOR_STATS": "500",
+        "BIGQUERY_ALLOWED_DATASETS": "test_dataset1,test_dataset2",
+    }
     os.environ.update(test_env)
     yield test_env
     os.environ.clear()
