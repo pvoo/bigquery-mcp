@@ -1,15 +1,14 @@
 {
   "mcpServers": {
     "bigquery": {
-      "command": "uv",
+      "command": "uvx",
       "args": [
-        "run",
-        "bigquery-mcp"
-      ],
-      "env": {
-        "GCP_PROJECT_ID": "bi-project-392012",
-        "BIGQUERY_LOCATION": "europe-west4"
-      }
+        "bigquery-mcp",
+        "--project",
+        "your-project-id",
+        "--location",
+        "US"
+      ]
     }
   }
 }
