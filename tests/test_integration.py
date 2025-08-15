@@ -104,7 +104,6 @@ class TestBigQueryMCPIntegration:
             ORDER BY word_count DESC
             LIMIT 5
             """,
-                "max_results": 10,
             },
         )
 
@@ -314,7 +313,6 @@ class TestBigQueryMCPIntegration:
             "run_query",
             {
                 # Missing required 'query' parameter
-                "max_results": 10
             },
         )
 
@@ -336,8 +334,8 @@ class TestBigQueryMCPIntegration:
             SELECT word, word_count, corpus
             FROM `bigquery-public-data.samples.shakespeare`
             ORDER BY word_count DESC
+            LIMIT 100
             """,
-                "max_results": 100,  # Limit results
             },
         )
 
