@@ -95,7 +95,6 @@ def test_allowed_datasets_empty_env_var():
 @pytest.mark.parametrize(
     "arg_name,env_var,expected_type",
     [
-        ("max_results", "BIGQUERY_MAX_RESULTS", int),
         ("list_max_results", "BIGQUERY_LIST_MAX_RESULTS", int),
         ("detailed_list_max", "BIGQUERY_LIST_MAX_RESULTS_DETAILED", int),
         ("sample_rows", "BIGQUERY_SAMPLE_ROWS", int),
@@ -126,11 +125,9 @@ def test_cli_argument_precedence():
     from bigquery_mcp.server import parse_arguments
 
     # Set environment variables
-    with patch.dict(
-        os.environ, {"GCP_PROJECT_ID": "env-project", "BIGQUERY_LOCATION": "env-location", "BIGQUERY_MAX_RESULTS": "50"}
-    ):
+    with patch.dict(os.environ, {"GCP_PROJECT_ID": "env-project", "BIGQUERY_LOCATION": "env-location"}):
         # Mock command line arguments that override env vars
-        test_args = ["--project", "cli-project", "--location", "cli-location", "--max-results", "100"]
+        test_args = ["--project", "cli-project", "--location", "cli-location"]
 
         with patch("sys.argv", ["bigquery-mcp", *test_args]):
             args = parse_arguments()
@@ -138,7 +135,6 @@ def test_cli_argument_precedence():
             # CLI args should override environment
             assert args.project_id == "cli-project"
             assert args.location == "cli-location"
-            assert args.max_results == 100
 
 
 def test_configuration_defaults(env_vars):
@@ -146,13 +142,11 @@ def test_configuration_defaults(env_vars):
     from bigquery_mcp.bigquery_tools import (
         DEFAULT_LIST_MAX_RESULTS,
         DEFAULT_LIST_MAX_RESULTS_DETAILED,
-        DEFAULT_MAX_RESULTS,
         DEFAULT_SAMPLE_ROWS,
         DEFAULT_SAMPLE_ROWS_FOR_STATS,
     )
 
     # Test that defaults are reasonable values
-    assert DEFAULT_MAX_RESULTS == 20
     assert DEFAULT_LIST_MAX_RESULTS == 500
     assert DEFAULT_LIST_MAX_RESULTS_DETAILED == 25
     assert DEFAULT_SAMPLE_ROWS == 3

@@ -25,7 +25,6 @@ except ImportError:
     from query_safety import is_query_safe  # type: ignore[import-not-found,no-redef]
 
 # Configuration defaults (can be overridden via CLI args or env vars)
-DEFAULT_MAX_RESULTS = 20  # Default result limit for query execution
 DEFAULT_LIST_MAX_RESULTS = 500  # Basic list operations return limit
 DEFAULT_LIST_MAX_RESULTS_DETAILED = 25  # When including descriptions, limit for manageable context
 DEFAULT_SAMPLE_ROWS = 3  # Number of sample rows to include in table details
@@ -33,7 +32,6 @@ DEFAULT_SAMPLE_ROWS_FOR_STATS = 500  # Number of rows to sample for column stati
 DEFAULT_MAX_RECOMMENDED_RESULTS = 1000  # Maximum recommended results to prevent context overflow
 
 # These can be overridden by environment variables or CLI arguments
-_max_results = int(os.getenv("BIGQUERY_MAX_RESULTS", str(DEFAULT_MAX_RESULTS)))
 _list_max_results = int(os.getenv("BIGQUERY_LIST_MAX_RESULTS", str(DEFAULT_LIST_MAX_RESULTS)))
 _list_max_results_detailed = int(
     os.getenv("BIGQUERY_LIST_MAX_RESULTS_DETAILED", str(DEFAULT_LIST_MAX_RESULTS_DETAILED))
@@ -56,11 +54,6 @@ def get_table_stats_sample_size() -> int:
 def get_table_sample_data_rows() -> int:
     """Get number of sample rows to include in table details."""
     return _sample_rows
-
-
-def get_query_default_max_results() -> int:
-    """Get default maximum results for query execution."""
-    return _max_results
 
 
 def get_query_max_recommended_results() -> int:
@@ -194,24 +187,25 @@ def register_tools(mcp: FastMCP, bigquery_client: bigquery.Client, allowed_datas
         if env_datasets:
             allowed_datasets = [d.strip() for d in env_datasets.split(",") if d.strip()]
 
-    @mcp.tool(description="Execute read-only BigQuery SQL queries with safety validation")
+    @mcp.tool(
+        description="Execute read-only BigQuery SQL queries with safety validation. Use LIMIT in your query to control result size (recommended: start with LIMIT 20 for exploration)."
+    )
     async def run_query(
         query: Annotated[
-            str, Field(description="BigQuery SQL SELECT query to execute (only read-only queries allowed)")
+            str,
+            Field(
+                description="BigQuery SQL SELECT query to execute (only read-only queries allowed). Use LIMIT clause to control result size."
+            ),
         ],
-        max_results: Annotated[
-            int | None, Field(description="(INTEGER) Maximum number of rows to return in the result set", default=None)
-        ] = None,
     ) -> dict[str, Any]:
         """Execute read-only BigQuery SQL queries with safety validation.
 
+        Note: Use LIMIT clause in your SQL query to control the number of rows returned.
+        For initial exploration, start with a small limit like LIMIT 20.
+
         Args:
             query: BigQuery SQL SELECT query to execute
-            max_results: Max rows to return (default: 20)
         """
-        if max_results is None:
-            max_results = get_query_default_max_results()
-
         try:
             is_safe, error_msg = is_query_safe(query)
             if not is_safe:
@@ -220,7 +214,7 @@ def register_tools(mcp: FastMCP, bigquery_client: bigquery.Client, allowed_datas
             query_job = bigquery_client.query(query)
             results = await asyncio.to_thread(query_job.result)
 
-            rows = [dict(row) for i, row in enumerate(results) if i < max_results]
+            rows = [dict(row) for row in results]
 
             return _create_success_response(
                 data=rows,
@@ -239,7 +233,7 @@ def register_tools(mcp: FastMCP, bigquery_client: bigquery.Client, allowed_datas
             bool, Field(description="Include descriptions and table counts for each dataset", default=False)
         ] = False,
         max_results: Annotated[
-            int | None, Field(description="Maximum number of datasets to return", default=None)
+            int | None, Field(description="(OPTIONAL INTEGER) Maximum number of datasets to return", default=None)
         ] = None,
     ) -> dict[str, Any]:
         """List all datasets in BigQuery project with optional search and detailed information.
@@ -247,7 +241,7 @@ def register_tools(mcp: FastMCP, bigquery_client: bigquery.Client, allowed_datas
         Args:
             search: Filter datasets by name
             detailed: Include descriptions and table counts
-            max_results: Max datasets to return
+            max_results: (Optional integer) Max datasets to return
         """
         if max_results is None:
             max_results = get_list_max_results(detailed)
@@ -333,7 +327,7 @@ def register_tools(mcp: FastMCP, bigquery_client: bigquery.Client, allowed_datas
             bool, Field(description="Include table metadata like row count and size", default=False)
         ] = False,
         max_results: Annotated[
-            int | None, Field(description="Maximum number of tables to return", default=None)
+            int | None, Field(description="(OPTIONAL INTEGER) Maximum number of tables to return", default=None)
         ] = None,
     ) -> dict[str, Any]:
         """List tables in dataset with optional search, detailed information, and dataset context.
@@ -342,7 +336,7 @@ def register_tools(mcp: FastMCP, bigquery_client: bigquery.Client, allowed_datas
             dataset_id: BigQuery dataset ID
             search: Filter tables by name
             detailed: Include schemas and metadata
-            max_results: Max tables to return
+            max_results: (Optional integer) Max tables to return
         """
         if max_results is None:
             max_results = get_list_max_results(detailed)

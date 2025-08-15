@@ -101,7 +101,6 @@ All configuration can be set via CLI arguments or environment variables. CLI arg
 --datasets dataset1 dataset2    # Restrict to specific datasets (default: all datasets)
 
 # Query & Result Limits
---max-results 20                # Max rows returned by run_query (default: 20)
 --list-max-results 500          # Max results for basic list operations (default: 500)
 --detailed-list-max 25          # Max results for detailed list operations (default: 25)
 
@@ -119,7 +118,6 @@ All CLI options have corresponding environment variables:
 export GCP_PROJECT_ID=your-project
 export BIGQUERY_LOCATION=US
 export BIGQUERY_ALLOWED_DATASETS=dataset1,dataset2
-export BIGQUERY_MAX_RESULTS=20
 export BIGQUERY_LIST_MAX_RESULTS=500
 export BIGQUERY_LIST_MAX_RESULTS_DETAILED=25
 export BIGQUERY_SAMPLE_ROWS=3
@@ -137,7 +135,7 @@ This MCP server provides 4 core BigQuery tools optimized for LLM efficiency:
 - **`get_table`** - Complete table analysis with schema and sample data
 
 ### 🔍 Safe Query Execution
-- **`run_query`** - Execute SELECT/WITH queries only, with cost tracking and safety validation
+- **`run_query`** - Execute SELECT/WITH queries only, with cost tracking and safety validation. Use LIMIT clause in queries to control result size.
 
 **Key Features:**
 - ✅ **Minimal by default** - 70% fewer tokens in basic mode
@@ -216,6 +214,7 @@ SELECT
 FROM `bigquery-public-data.new_york_taxi_trips.tlc_yellow_trips_2020`
 WHERE pickup_datetime BETWEEN '2020-01-01' AND '2020-12-31'
 GROUP BY year
+LIMIT 20
 ```
 
 ### 🤖 Example: Usage with Claude Code subagent

@@ -35,7 +35,6 @@ Environment Variables (can be overridden by CLI arguments):
   BIGQUERY_LOCATION                 BigQuery location (e.g., 'US', 'EU', 'us-central1')
   GOOGLE_APPLICATION_CREDENTIALS    Path to service account key file
   BIGQUERY_ALLOWED_DATASETS         Comma-separated list of allowed datasets
-  BIGQUERY_MAX_RESULTS              Max results for queries (default: 20)
   BIGQUERY_LIST_MAX_RESULTS         Max results for basic list operations (default: 500)
   BIGQUERY_LIST_MAX_RESULTS_DETAILED Max results for detailed list operations (default: 25)
   BIGQUERY_SAMPLE_ROWS              Sample data rows in table details (default: 3)
@@ -83,13 +82,6 @@ Examples:
     )
 
     parser.add_argument(
-        "--max-results",
-        type=int,
-        dest="max_results",
-        help="Max rows returned by run_query (default: 20)",
-    )
-
-    parser.add_argument(
         "--list-max-results",
         type=int,
         dest="list_max_results",
@@ -128,7 +120,6 @@ Examples:
 
 
 def _set_environment_overrides(
-    max_results: int | None = None,
     list_max_results: int | None = None,
     detailed_list_max: int | None = None,
     sample_rows: int | None = None,
@@ -137,9 +128,6 @@ def _set_environment_overrides(
     allowed_datasets: list[str] | None = None,
 ) -> None:
     """Set environment variables for configuration overrides."""
-    if max_results is not None:
-        os.environ["BIGQUERY_MAX_RESULTS"] = str(max_results)
-
     if list_max_results is not None:
         os.environ["BIGQUERY_LIST_MAX_RESULTS"] = str(list_max_results)
 
@@ -163,7 +151,6 @@ def run_server(
     project_id: str,
     location: str,
     key_file: str | None = None,
-    max_results: int | None = None,
     list_max_results: int | None = None,
     detailed_list_max: int | None = None,
     sample_rows: int | None = None,
@@ -177,7 +164,6 @@ def run_server(
         project_id: Google Cloud project ID
         location: BigQuery location
         key_file: Optional path to service account key file
-        max_results: Optional override for query max results
         list_max_results: Optional override for basic list max results
         detailed_list_max: Optional override for detailed list max results
         sample_rows: Optional override for sample data rows
@@ -187,7 +173,6 @@ def run_server(
     """
     # Set environment variables for configuration overrides
     _set_environment_overrides(
-        max_results=max_results,
         list_max_results=list_max_results,
         detailed_list_max=detailed_list_max,
         sample_rows=sample_rows,
@@ -287,7 +272,6 @@ def main() -> None:
             project_id=project_id,
             location=location,
             key_file=args.key_file,
-            max_results=args.max_results,
             list_max_results=args.list_max_results,
             detailed_list_max=args.detailed_list_max,
             sample_rows=args.sample_rows,
