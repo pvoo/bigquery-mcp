@@ -10,8 +10,7 @@ import os
 import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
-
-from tests.mcp_client import MCPClient
+from mcp_client import MCPClient
 
 # Load environment variables for testing
 load_dotenv()
@@ -73,7 +72,13 @@ class TestBigQueryMCPIntegration:
 
         # Verify we have all expected tools
         tool_names = {tool["name"] for tool in tools}
-        expected_tools = {"run_query", "list_datasets_in_project", "list_tables_in_dataset", "get_table"}
+        expected_tools = {
+            "run_query",
+            "list_datasets_in_project",
+            "list_tables_in_dataset",
+            "get_table",
+            "vector_search",
+        }
         assert expected_tools == tool_names
         assert len(tools) == len(expected_tools)
 

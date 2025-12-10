@@ -110,6 +110,27 @@ Examples:
     )
 
     parser.add_argument(
+        "--vector-search",
+        "--no-vector-search",
+        dest="vector_search_enabled",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable vector search tools (default: enabled)",
+    )
+
+    parser.add_argument(
+        "--embedding-model",
+        dest="embedding_model",
+        help="Default BigQuery ML embedding model path (e.g., 'project.dataset.model')",
+    )
+
+    parser.add_argument(
+        "--vector-column-contains",
+        dest="vector_column_contains",
+        help="Filter pattern for finding vector columns (default: 'embedding')",
+    )
+
+    parser.add_argument(
         "--check-auth",
         action="store_true",
         dest="check_auth",
@@ -126,6 +147,9 @@ def _set_environment_overrides(
     stats_sample_size: int | None = None,
     key_file: str | None = None,
     allowed_datasets: list[str] | None = None,
+    vector_search_enabled: bool | None = None,
+    embedding_model: str | None = None,
+    vector_column_contains: str | None = None,
 ) -> None:
     """Set environment variables for configuration overrides."""
     if list_max_results is not None:
@@ -146,6 +170,15 @@ def _set_environment_overrides(
     if allowed_datasets:
         os.environ["BIGQUERY_ALLOWED_DATASETS"] = ",".join(allowed_datasets)
 
+    if vector_search_enabled is not None:
+        os.environ["BIGQUERY_VECTOR_SEARCH_ENABLED"] = str(vector_search_enabled).lower()
+
+    if embedding_model:
+        os.environ["BIGQUERY_EMBEDDING_MODEL"] = embedding_model
+
+    if vector_column_contains:
+        os.environ["BIGQUERY_VECTOR_COLUMN_CONTAINS"] = vector_column_contains
+
 
 def run_server(
     project_id: str,
@@ -157,6 +190,9 @@ def run_server(
     stats_sample_size: int | None = None,
     allowed_datasets: list[str] | None = None,
     check_auth_only: bool = False,
+    vector_search_enabled: bool | None = None,
+    embedding_model: str | None = None,
+    vector_column_contains: str | None = None,
 ) -> None:
     """Run the BigQuery MCP server with the given configuration.
 
@@ -170,6 +206,9 @@ def run_server(
         stats_sample_size: Optional override for stats sampling size
         allowed_datasets: Optional list of allowed dataset IDs
         check_auth_only: If True, only check authentication and exit
+        vector_search_enabled: Optional override for vector search enabled/disabled
+        embedding_model: Optional default embedding model path
+        vector_column_contains: Optional column pattern for finding vector columns
     """
     # Set environment variables for configuration overrides
     _set_environment_overrides(
@@ -179,6 +218,9 @@ def run_server(
         stats_sample_size=stats_sample_size,
         key_file=key_file,
         allowed_datasets=allowed_datasets,
+        vector_search_enabled=vector_search_enabled,
+        embedding_model=embedding_model,
+        vector_column_contains=vector_column_contains,
     )
 
     # Initialize BigQuery client with configured project
@@ -226,7 +268,7 @@ def run_server(
     mcp = FastMCP("bigquery-mcp")
 
     # Register all BigQuery tools with the MCP server
-    register_tools(mcp, bigquery_client, allowed_datasets)
+    register_tools(mcp, bigquery_client, allowed_datasets, location)
 
     print("🚀 Ready to accept BigQuery MCP requests")
     # Start the server - this will run until interrupted
@@ -278,6 +320,9 @@ def main() -> None:
             stats_sample_size=args.stats_sample_size,
             allowed_datasets=args.allowed_datasets,
             check_auth_only=args.check_auth,
+            vector_search_enabled=args.vector_search_enabled,
+            embedding_model=args.embedding_model,
+            vector_column_contains=args.vector_column_contains,
         )
     except KeyboardInterrupt:
         print("\nServer stopped by user.", file=sys.stderr)

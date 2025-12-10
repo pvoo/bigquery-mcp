@@ -11,14 +11,14 @@ def setup_env(env_vars):
 
 def test_safety_import():
     """Test that we can import the safety function after env setup."""
-    from src.bigquery_mcp.query_safety import is_query_safe
+    from bigquery_mcp.query_safety import is_query_safe
 
     assert is_query_safe is not None
 
 
 def test_safe_select_queries():
     """Test that safe SELECT queries are allowed."""
-    from src.bigquery_mcp.query_safety import is_query_safe
+    from bigquery_mcp.query_safety import is_query_safe
 
     safe_queries = [
         "SELECT * FROM table",
@@ -40,7 +40,7 @@ def test_safe_select_queries():
 
 def test_dangerous_queries():
     """Test that dangerous queries are blocked."""
-    from src.bigquery_mcp.query_safety import is_query_safe
+    from bigquery_mcp.query_safety import is_query_safe
 
     dangerous_queries = [
         "DELETE FROM table WHERE id = 1",
@@ -68,7 +68,7 @@ def test_dangerous_queries():
 
 def test_queries_with_comments():
     """Test that queries with comments are properly validated."""
-    from src.bigquery_mcp.query_safety import is_query_safe
+    from bigquery_mcp.query_safety import is_query_safe
 
     # Blocked even with comments
     commented_still_blocked = [
@@ -93,7 +93,7 @@ def test_queries_with_comments():
 
 def test_multiple_statements_blocked():
     """Ensure multiple statements are rejected while semicolons in strings are fine."""
-    from src.bigquery_mcp.query_safety import is_query_safe
+    from bigquery_mcp.query_safety import is_query_safe
 
     blocked = [
         "SELECT 1; SELECT 2",  # two statements
@@ -107,7 +107,7 @@ def test_multiple_statements_blocked():
 
 def test_non_select_start():
     """Test that queries not starting with SELECT or WITH are blocked."""
-    from src.bigquery_mcp.query_safety import is_query_safe
+    from bigquery_mcp.query_safety import is_query_safe
 
     invalid_start_queries = [
         "SHOW TABLES",
@@ -123,7 +123,7 @@ def test_non_select_start():
 
 def test_case_insensitive():
     """Test that validation is case insensitive."""
-    from src.bigquery_mcp.query_safety import is_query_safe
+    from bigquery_mcp.query_safety import is_query_safe
 
     mixed_case_dangerous = [
         "delete from table",
@@ -138,7 +138,7 @@ def test_case_insensitive():
 
 def test_word_boundaries():
     """Test that keyword detection uses word boundaries."""
-    from src.bigquery_mcp.query_safety import is_query_safe
+    from bigquery_mcp.query_safety import is_query_safe
 
     # These should be safe as the dangerous keywords are part of larger words
     safe_with_keyword_parts = [

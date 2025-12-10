@@ -7,7 +7,7 @@ import pytest
 from google.auth.exceptions import DefaultCredentialsError
 from google.cloud.exceptions import GoogleCloudError
 
-from src.bigquery_mcp.auth import get_helpful_auth_error, validate_authentication
+from bigquery_mcp.auth import get_helpful_auth_error, validate_authentication
 
 
 @pytest.fixture(autouse=True)
@@ -85,7 +85,7 @@ async def test_validate_authentication_success():
     """Test successful authentication validation."""
     mock_client = Mock()
 
-    with patch("src.bigquery_mcp.auth.asyncio.to_thread") as mock_to_thread:
+    with patch("bigquery_mcp.auth.asyncio.to_thread") as mock_to_thread:
         # Mock successful dataset listing
         mock_to_thread.side_effect = [
             [],  # list_datasets succeeds (empty list is fine)
@@ -105,10 +105,10 @@ async def test_validate_authentication_list_datasets_fails():
     """Test authentication validation when list_datasets fails."""
     mock_client = Mock()
 
-    with patch("src.bigquery_mcp.auth.asyncio.to_thread") as mock_to_thread:
+    with patch("bigquery_mcp.auth.asyncio.to_thread") as mock_to_thread:
         mock_to_thread.side_effect = GoogleCloudError("Permission denied")
 
-        with patch("src.bigquery_mcp.auth.sys.exit") as mock_exit:
+        with patch("bigquery_mcp.auth.sys.exit") as mock_exit:
             await validate_authentication(mock_client, "test-project", "US")
             mock_exit.assert_called_once_with(1)
 
@@ -118,14 +118,14 @@ async def test_validate_authentication_project_access_fails():
     """Test authentication validation when project access check fails."""
     mock_client = Mock()
 
-    with patch("src.bigquery_mcp.auth.asyncio.to_thread") as mock_to_thread:
+    with patch("bigquery_mcp.auth.asyncio.to_thread") as mock_to_thread:
         # First call succeeds (list_datasets), second call fails (project access)
         mock_to_thread.side_effect = [
             [],  # list_datasets succeeds
             GoogleCloudError("Project access denied"),  # project access fails
         ]
 
-        with patch("src.bigquery_mcp.auth.sys.exit") as mock_exit:
+        with patch("bigquery_mcp.auth.sys.exit") as mock_exit:
             await validate_authentication(mock_client, "test-project", "US")
             mock_exit.assert_called_once_with(1)
 
@@ -135,7 +135,7 @@ async def test_validate_authentication_query_permissions_fail():
     """Test authentication validation when query permissions fail."""
     mock_client = Mock()
 
-    with patch("src.bigquery_mcp.auth.asyncio.to_thread") as mock_to_thread:
+    with patch("bigquery_mcp.auth.asyncio.to_thread") as mock_to_thread:
         # First two calls succeed, query test fails
         mock_to_thread.side_effect = [
             [],  # list_datasets succeeds
@@ -145,7 +145,7 @@ async def test_validate_authentication_query_permissions_fail():
         # Mock query to raise an error
         mock_client.query.side_effect = GoogleCloudError("Query permission denied")
 
-        with patch("src.bigquery_mcp.auth.sys.exit") as mock_exit:
+        with patch("bigquery_mcp.auth.sys.exit") as mock_exit:
             await validate_authentication(mock_client, "test-project", "US")
             mock_exit.assert_called_once_with(1)
 
@@ -155,7 +155,7 @@ async def test_validate_authentication_without_location():
     """Test authentication validation without specifying location."""
     mock_client = Mock()
 
-    with patch("src.bigquery_mcp.auth.asyncio.to_thread") as mock_to_thread:
+    with patch("bigquery_mcp.auth.asyncio.to_thread") as mock_to_thread:
         # Mock successful validation
         mock_to_thread.side_effect = [
             [],  # list_datasets succeeds

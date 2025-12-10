@@ -1,6 +1,7 @@
 """BigQuery MCP tools - Optimized interface for AI model data navigation."""
 
 import asyncio
+import contextlib
 import os
 
 # Handle both module and direct execution imports
@@ -59,6 +60,42 @@ def get_table_sample_data_rows() -> int:
 def get_query_max_recommended_results() -> int:
     """Get maximum recommended results for query execution."""
     return _max_recommended_results
+
+
+# Vector search configuration
+DEFAULT_VECTOR_COLUMN_CONTAINS = "embedding"
+
+_vector_search_enabled: bool | None = None
+_embedding_model: str | None = None
+_vector_column_contains: str = DEFAULT_VECTOR_COLUMN_CONTAINS
+
+# Cache for embedding tables discovery
+_embedding_tables_cache: dict[str, list[dict[str, Any]]] = {}
+# Track if region-level INFORMATION_SCHEMA is available (None = unknown, True/False = tested)
+_region_info_schema_available: bool | None = None
+
+
+def is_vector_search_enabled() -> bool:
+    """Check if vector search tools should be enabled."""
+    env_value = os.getenv("BIGQUERY_VECTOR_SEARCH_ENABLED", "true").lower()
+    return env_value in ("true", "1", "yes", "on")
+
+
+def get_default_embedding_model() -> str | None:
+    """Get default embedding model from environment."""
+    return os.getenv("BIGQUERY_EMBEDDING_MODEL")
+
+
+def get_vector_column_contains() -> str:
+    """Get the default column pattern for finding vector columns."""
+    return os.getenv("BIGQUERY_VECTOR_COLUMN_CONTAINS", DEFAULT_VECTOR_COLUMN_CONTAINS)
+
+
+def clear_embedding_tables_cache() -> None:
+    """Clear the embedding tables cache."""
+    global _region_info_schema_available
+    _embedding_tables_cache.clear()
+    _region_info_schema_available = None  # Reset permission check on cache clear
 
 
 def _calculate_search_fetch_limit(max_results: int, search: str) -> int:
@@ -180,7 +217,12 @@ def _calculate_column_fill_rates(
         return fill_rates
 
 
-def register_tools(mcp: FastMCP, bigquery_client: bigquery.Client, allowed_datasets: list[str] | None = None) -> None:  # noqa: C901
+def register_tools(  # noqa: C901
+    mcp: FastMCP,
+    bigquery_client: bigquery.Client,
+    allowed_datasets: list[str] | None = None,
+    location: str | None = None,
+) -> None:
     # If no allowed_datasets passed, check environment variable
     if allowed_datasets is None:
         env_datasets = os.getenv("BIGQUERY_ALLOWED_DATASETS")
@@ -188,7 +230,7 @@ def register_tools(mcp: FastMCP, bigquery_client: bigquery.Client, allowed_datas
             allowed_datasets = [d.strip() for d in env_datasets.split(",") if d.strip()]
 
     @mcp.tool(
-        description="Execute read-only BigQuery SQL queries with safety validation. Use LIMIT in your query to control result size (recommended: start with LIMIT 20 for exploration)."
+        description="Execute read-only BigQuery SQL queries with safety validation. Use LIMIT in your query to control result size (recommended: start with LIMIT 20). For semantic search, consider using the vector_search tool or write custom VECTOR_SEARCH queries."
     )
     async def run_query(
         query: Annotated[
@@ -202,6 +244,9 @@ def register_tools(mcp: FastMCP, bigquery_client: bigquery.Client, allowed_datas
 
         Note: Use LIMIT clause in your SQL query to control the number of rows returned.
         For initial exploration, start with a small limit like LIMIT 20.
+
+        For semantic/vector search, consider using the vector_search tool for a simpler interface,
+        or write custom SQL using VECTOR_SEARCH with ML.GENERATE_EMBEDDING.
 
         Args:
             query: BigQuery SQL SELECT query to execute
@@ -498,3 +543,264 @@ def register_tools(mcp: FastMCP, bigquery_client: bigquery.Client, allowed_datas
 
         except (GoogleCloudError, Exception) as e:
             return _create_error_response(e)
+
+    # Helper functions for vector search (defined inside register_tools to access bigquery_client)
+    def _add_embedding_row_to_dict(
+        tables_dict: dict[str, dict[str, Any]], dataset_id: str, table_id: str, column_name: str
+    ) -> None:
+        """Add a row from embedding query results to the tables dictionary."""
+        key = f"{dataset_id}.{table_id}"
+        if key not in tables_dict:
+            tables_dict[key] = {
+                "dataset_id": dataset_id,
+                "table_id": table_id,
+                "full_path": key,
+                "embedding_columns": [],
+            }
+        tables_dict[key]["embedding_columns"].append(column_name)
+
+    async def _query_dataset_embedding_columns(
+        project_id: str, ds_id: str, pattern: str | None, tables_dict: dict[str, dict[str, Any]]
+    ) -> None:
+        """Query a single dataset for embedding columns and add to tables_dict."""
+        ds_query = f"""
+        SELECT
+            '{ds_id}' as dataset_id,
+            table_name as table_id,
+            column_name
+        FROM `{project_id}.{ds_id}`.INFORMATION_SCHEMA.COLUMNS
+        WHERE data_type = 'ARRAY<FLOAT64>'
+        """  # noqa: S608
+
+        if pattern:
+            ds_query += f" AND LOWER(column_name) LIKE '%{pattern.lower()}%'"
+
+        ds_query_job = bigquery_client.query(ds_query)
+        ds_results = await asyncio.to_thread(ds_query_job.result)
+
+        for row in ds_results:
+            _add_embedding_row_to_dict(tables_dict, row.dataset_id, row.table_id, row.column_name)
+
+    async def _fallback_dataset_level_search(
+        project_id: str,
+        pattern: str | None,
+        dataset_id: str | None,
+        tables_dict: dict[str, dict[str, Any]],
+    ) -> None:
+        """Fall back to querying each dataset individually for embedding columns."""
+        # Get list of datasets to query
+        if dataset_id:
+            datasets_to_query = [dataset_id]
+        elif allowed_datasets:
+            datasets_to_query = list(allowed_datasets)
+        else:
+            datasets_list = await asyncio.to_thread(lambda: list(bigquery_client.list_datasets(max_results=100)))
+            datasets_to_query = [ds.dataset_id for ds in datasets_list]
+
+        async def query_single_dataset(ds_id: str) -> None:
+            """Query a single dataset, ignoring errors."""
+            with contextlib.suppress(GoogleCloudError):
+                await _query_dataset_embedding_columns(project_id, ds_id, pattern, tables_dict)
+
+        # Query all datasets in parallel for better performance
+        await asyncio.gather(*[query_single_dataset(ds_id) for ds_id in datasets_to_query])
+
+    async def _try_region_level_query(
+        project_id: str,
+        region: str,
+        pattern: str | None,
+        dataset_id: str | None,
+        tables_dict: dict[str, dict[str, Any]],
+    ) -> bool:
+        """Try region-level INFORMATION_SCHEMA query. Returns True if successful, False if permission denied."""
+        global _region_info_schema_available
+
+        query = f"""
+        SELECT table_schema as dataset_id, table_name as table_id, column_name
+        FROM `{project_id}.region-{region}`.INFORMATION_SCHEMA.COLUMNS
+        WHERE data_type = 'ARRAY<FLOAT64>'
+        """  # noqa: S608
+
+        if pattern:
+            query += f" AND LOWER(column_name) LIKE '%{pattern.lower()}%'"
+        if dataset_id:
+            query += f" AND table_schema = '{dataset_id}'"
+        elif allowed_datasets:
+            datasets_str = "', '".join(allowed_datasets)
+            query += f" AND table_schema IN ('{datasets_str}')"
+
+        query += " ORDER BY table_schema, table_name, column_name"
+
+        try:
+            results = await asyncio.to_thread(bigquery_client.query(query).result)
+            for row in results:
+                _add_embedding_row_to_dict(tables_dict, row.dataset_id, row.table_id, row.column_name)
+        except GoogleCloudError as e:
+            if "Access Denied" in str(e) or "403" in str(e):
+                _region_info_schema_available = False
+                return False
+            raise
+        else:
+            _region_info_schema_available = True
+            return True
+
+    async def _discover_embedding_tables(pattern: str, dataset_id: str | None, refresh: bool) -> dict[str, Any]:
+        """Discovery mode: find tables with embedding columns."""
+        cache_key = f"{pattern}:{dataset_id or 'all'}"
+
+        # Check cache unless refresh requested
+        if not refresh and cache_key in _embedding_tables_cache:
+            cached = _embedding_tables_cache[cache_key]
+            return _create_success_response(data=cached, total_count=len(cached), cached=True, mode="discovery")
+
+        # Check allowed datasets restriction
+        if dataset_id and allowed_datasets and dataset_id not in allowed_datasets:
+            return _create_error_response(Exception(f"Access to dataset '{dataset_id}' is not allowed"))
+
+        project_id = bigquery_client.project
+        region = location or "US"
+        tables_dict: dict[str, dict[str, Any]] = {}
+
+        # Use cached knowledge of whether region-level INFORMATION_SCHEMA works
+        if _region_info_schema_available is False:
+            await _fallback_dataset_level_search(project_id, pattern, dataset_id, tables_dict)
+        else:
+            success = await _try_region_level_query(project_id, region, pattern, dataset_id, tables_dict)
+            if not success:
+                await _fallback_dataset_level_search(project_id, pattern, dataset_id, tables_dict)
+
+        embedding_tables = list(tables_dict.values())
+        _embedding_tables_cache[cache_key] = embedding_tables
+
+        return _create_success_response(
+            data=embedding_tables,
+            total_count=len(embedding_tables),
+            cached=False,
+            mode="discovery",
+            column_pattern=pattern,
+        )
+
+    async def _execute_vector_search(
+        query_text: str,
+        table_path: str,
+        embedding_column: str,
+        model: str,
+        top_k: int,
+        select_columns: list[str] | None,
+        distance_type: str,
+    ) -> dict[str, Any]:
+        """Search mode: execute vector similarity search."""
+        select_clause = ", ".join(f"base.`{col}`" for col in select_columns) if select_columns else "base.*"
+
+        query = f"""
+        WITH query_embedding AS (
+            SELECT ml_generate_embedding_result AS embedding
+            FROM ML.GENERATE_EMBEDDING(
+                MODEL `{model}`,
+                (SELECT @query_text AS content),
+                STRUCT(TRUE AS flatten_json_output)
+            )
+        )
+        SELECT
+            {select_clause},
+            ROUND((1 - distance) * 100, 2) AS similarity_pct,
+            distance
+        FROM VECTOR_SEARCH(
+            TABLE `{table_path}`,
+            '{embedding_column}',
+            (SELECT embedding FROM query_embedding),
+            top_k => {top_k},
+            distance_type => '{distance_type.upper()}'
+        )
+        ORDER BY distance
+        """  # noqa: S608
+
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ScalarQueryParameter("query_text", "STRING", query_text)]
+        )
+
+        query_job = bigquery_client.query(query, job_config=job_config)
+        results = await asyncio.to_thread(query_job.result)
+        rows = [dict(row) for row in results]
+
+        # Build a reusable query with the actual query text substituted
+        reusable_query = query.replace("@query_text", f"'{query_text}'").strip()
+
+        return _create_success_response(
+            data=rows,
+            total_count=len(rows),
+            mode="search",
+            query_text=query_text,
+            table_path=table_path,
+            embedding_model=model,
+            distance_type=distance_type.upper(),
+            bytes_processed=query_job.total_bytes_processed,
+            sql_query=reusable_query,
+        )
+
+    # Vector search tool (conditionally registered)
+    if is_vector_search_enabled():
+
+        @mcp.tool(
+            description="Vector search: discover embedding tables (no query_text) or perform semantic search (with query_text). Configure BIGQUERY_EMBEDDING_MODEL and BIGQUERY_EMBEDDING_COLUMN env vars."
+        )
+        async def vector_search(
+            query_text: Annotated[
+                str | None,
+                Field(description="Text to search for. If omitted, discovers tables with embedding columns."),
+            ] = None,
+            table_path: Annotated[
+                str | None,
+                Field(description="Table path: 'dataset.table'. Required for search."),
+            ] = None,
+            top_k: Annotated[int, Field(description="Number of results (1-1000)", default=10)] = 10,
+            select_columns: Annotated[
+                list[str] | None,
+                Field(description="Columns to return (default: all)"),
+            ] = None,
+        ) -> dict[str, Any]:
+            """Vector search tool with two modes:
+
+            **Discovery mode** (no query_text): Find tables with embedding columns.
+            **Search mode** (with query_text): Perform semantic similarity search.
+
+            Configure via environment:
+            - BIGQUERY_EMBEDDING_MODEL: Required for search
+            - BIGQUERY_EMBEDDING_COLUMN: Column name (default: 'embedding')
+            - BIGQUERY_DISTANCE_TYPE: COSINE, EUCLIDEAN, DOT_PRODUCT (default: COSINE)
+            """
+            try:
+                # Discovery mode: no query_text provided
+                if query_text is None:
+                    pattern = get_vector_column_contains()
+                    return await _discover_embedding_tables(pattern, None, False)
+
+                # Search mode: validate required parameters
+                if not table_path:
+                    return _create_error_response(
+                        Exception("table_path is required for search. Omit query_text to discover tables.")
+                    )
+
+                embedding_column = os.getenv("BIGQUERY_EMBEDDING_COLUMN", "embedding")
+                model = get_default_embedding_model()
+                if not model:
+                    return _create_error_response(
+                        Exception("BIGQUERY_EMBEDDING_MODEL environment variable is required for vector search.")
+                    )
+
+                distance_type = os.getenv("BIGQUERY_DISTANCE_TYPE", "COSINE").upper()
+                valid_distance_types = ["COSINE", "EUCLIDEAN", "DOT_PRODUCT"]
+                if distance_type not in valid_distance_types:
+                    return _create_error_response(
+                        Exception(f"Invalid BIGQUERY_DISTANCE_TYPE '{distance_type}'. Must be: {valid_distance_types}")
+                    )
+
+                if top_k < 1 or top_k > 1000:
+                    return _create_error_response(Exception("top_k must be between 1 and 1000"))
+
+                return await _execute_vector_search(
+                    query_text, table_path, embedding_column, model, top_k, select_columns, distance_type
+                )
+
+            except (GoogleCloudError, Exception) as e:
+                return _create_error_response(e)

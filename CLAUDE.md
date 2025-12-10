@@ -84,6 +84,11 @@ Optional:
 - `BIGQUERY_SAMPLE_ROWS` - Sample rows returned in table details (default: 3)
 - `BIGQUERY_ALLOWED_DATASETS` - Comma-separated list of allowed datasets to show
 
+Vector Search (optional):
+- `BIGQUERY_VECTOR_SEARCH_ENABLED` - Enable/disable vector search tools (default: true)
+- `BIGQUERY_EMBEDDING_MODEL` - Default embedding model for vector_search
+- `BIGQUERY_VECTOR_COLUMN_CONTAINS` - Column pattern for find_embedding_tables (default: embedding)
+
 ## Code Style & Quality
 
 - **Python 3.10+** with comprehensive type hints (mypy configured)
@@ -100,6 +105,7 @@ Optional:
 - **Safety tests**: SQL validation in tests/test_safety.py
 - **Integration tests**: Real BigQuery interactions in tests/test_integration.py
 - **Authentication tests**: Credential handling in tests/test_auth.py
+- **Vector search tests**: Vector search tools in tests/test_vector_search.py
 - **MCP client**: Helper for testing MCP protocol in tests/mcp_client.py
 
 ## Project Structure
@@ -119,6 +125,7 @@ bigquery-mcp/
 │   ├── test_server.py    # Server functionality tests
 │   ├── test_safety.py    # Query safety validation tests
 │   ├── test_auth.py      # Authentication tests
+│   ├── test_vector_search.py # Vector search tools tests
 │   └── test_integration.py # Real BigQuery integration tests
 ├── examples/              # Usage examples and demos
 ├── Dockerfile            # Container deployment
@@ -131,6 +138,8 @@ bigquery-mcp/
 - **list_tables**: Shows basic info (name, rows, modified) unless detailed=true
 - **get_table**: Always returns comprehensive schema and metadata
 - **run_query**: Executes SELECT-only queries with safety validation
+- **find_embedding_tables**: Discovers tables with vector columns via INFORMATION_SCHEMA (cached)
+- **vector_search**: Performs semantic similarity search using VECTOR_SEARCH + ML.GENERATE_EMBEDDING
 
 ## Development Workflow
 

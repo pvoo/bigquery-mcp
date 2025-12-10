@@ -125,9 +125,19 @@ export BIGQUERY_SAMPLE_ROWS_FOR_STATS=500
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
 ```
 
+### Vector Search Configuration
+```bash
+# Required for search mode
+export BIGQUERY_EMBEDDING_MODEL=project.dataset.embedding_model
+
+# Optional (with defaults)
+export BIGQUERY_EMBEDDING_COLUMN=embedding    # Column containing embeddings
+export BIGQUERY_DISTANCE_TYPE=COSINE          # COSINE, EUCLIDEAN, DOT_PRODUCT
+```
+
 ## 🛠️ Tools Overview
 
-This MCP server provides 4 core BigQuery tools optimized for LLM efficiency:
+This MCP server provides 5 BigQuery tools optimized for LLM efficiency:
 
 ### 📊 Smart Dataset & Table Discovery
 - **`list_datasets`** - Dual mode: basic (names only) vs detailed (full metadata)
@@ -137,11 +147,93 @@ This MCP server provides 4 core BigQuery tools optimized for LLM efficiency:
 ### 🔍 Safe Query Execution
 - **`run_query`** - Execute SELECT/WITH queries only, with cost tracking and safety validation. Use LIMIT clause in queries to control result size.
 
+### 🔮 Vector Search (Optional)
+- **`vector_search`** - Dual-mode tool: discover embedding tables (no query_text) or perform semantic similarity search (with query_text)
+
 **Key Features:**
 - ✅ **Minimal by default** - 70% fewer tokens in basic mode
 - ✅ **Safe queries only** - Blocks all write operations
 - ✅ **LLM-optimized** - Returns structured data perfect for AI analysis
 - ✅ **Cost transparent** - Shows bytes processed for each query
+
+## 🔮 Vector Search
+
+The MCP server includes an optional `vector_search` tool for working with vector embeddings in BigQuery.
+
+### MCP Config Example with Vector Search
+
+```json
+{
+  "mcpServers": {
+    "bigquery": {
+      "command": "uvx",
+      "args": ["bigquery-mcp"],
+      "env": {
+        "GCP_PROJECT_ID": "my-project",
+        "BIGQUERY_LOCATION": "US",
+        "BIGQUERY_EMBEDDING_MODEL": "my-project.my_dataset.embedding_model",
+        "BIGQUERY_EMBEDDING_COLUMN": "embedding",
+        "BIGQUERY_DISTANCE_TYPE": "COSINE"
+      }
+    }
+  }
+}
+```
+
+### vector_search Tool
+
+A dual-mode tool that either discovers embedding tables or performs semantic similarity search.
+
+**Discovery Mode** (no query_text): Find tables with embedding columns
+
+```python
+# Find all tables with embedding columns
+vector_search()
+```
+
+**Search Mode** (with query_text): Perform semantic similarity search
+
+```python
+vector_search(
+    query_text="solenoid valve for water",
+    table_path="my_dataset.products",
+    top_k=10,
+    select_columns=["name", "description", "price"]  # Optional
+)
+```
+
+All other settings (embedding model, column name, distance type) are configured via environment variables.
+
+### Vector Search Requirements
+
+- Tables must have an `ARRAY<FLOAT64>` column containing embeddings
+- An embedding model must be configured in BigQuery ML
+- For best performance on large tables (>5000 rows), create a vector index
+
+### Example: Custom Vector Search with run_query
+
+For advanced queries, use `run_query` directly:
+
+```sql
+WITH query AS (
+  SELECT ml_generate_embedding_result AS embedding
+  FROM ML.GENERATE_EMBEDDING(
+    MODEL `project.dataset.embedding_model`,
+    (SELECT "search text" AS content),
+    STRUCT(TRUE AS flatten_json_output))
+)
+SELECT
+  base.name,
+  base.category,
+  ROUND((1 - distance) * 100, 1) AS similarity_pct
+FROM VECTOR_SEARCH(
+  TABLE `project.dataset.products`,
+  "embedding",
+  (SELECT embedding FROM query),
+  top_k => 10,
+  distance_type => "COSINE")
+ORDER BY distance
+```
 
 ## 🏗️ Development Setup
 
