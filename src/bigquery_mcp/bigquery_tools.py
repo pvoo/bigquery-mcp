@@ -1,7 +1,6 @@
 """BigQuery MCP tools - Optimized interface for AI model data navigation."""
 
 import asyncio
-import contextlib
 import os
 
 # Handle both module and direct execution imports
@@ -63,16 +62,10 @@ def get_query_max_recommended_results() -> int:
 
 
 # Vector search configuration
-DEFAULT_VECTOR_COLUMN_CONTAINS = "embedding"
-
-_vector_search_enabled: bool | None = None
-_embedding_model: str | None = None
-_vector_column_contains: str = DEFAULT_VECTOR_COLUMN_CONTAINS
+DEFAULT_EMBEDDING_COLUMN_CONTAINS = "embedding"
 
 # Cache for embedding tables discovery
 _embedding_tables_cache: dict[str, list[dict[str, Any]]] = {}
-# Track if region-level INFORMATION_SCHEMA is available (None = unknown, True/False = tested)
-_region_info_schema_available: bool | None = None
 
 
 def is_vector_search_enabled() -> bool:
@@ -86,16 +79,54 @@ def get_default_embedding_model() -> str | None:
     return os.getenv("BIGQUERY_EMBEDDING_MODEL")
 
 
-def get_vector_column_contains() -> str:
-    """Get the default column pattern for finding vector columns."""
-    return os.getenv("BIGQUERY_VECTOR_COLUMN_CONTAINS", DEFAULT_VECTOR_COLUMN_CONTAINS)
+def get_embedding_column_contains() -> str:
+    """Get the pattern for finding embedding columns (column name must contain this string)."""
+    return os.getenv("BIGQUERY_EMBEDDING_COLUMN_CONTAINS", DEFAULT_EMBEDDING_COLUMN_CONTAINS)
+
+
+def get_embedding_tables() -> list[str] | None:
+    """Get explicitly configured embedding tables from environment.
+
+    Returns list of table paths like ['dataset.table1', 'dataset.table2'] or None if not set.
+    """
+    env_value = os.getenv("BIGQUERY_EMBEDDING_TABLES")
+    if not env_value:
+        return None
+    return [t.strip() for t in env_value.split(",") if t.strip()]
 
 
 def clear_embedding_tables_cache() -> None:
     """Clear the embedding tables cache."""
-    global _region_info_schema_available
     _embedding_tables_cache.clear()
-    _region_info_schema_available = None  # Reset permission check on cache clear
+
+
+async def validate_embedding_model(bigquery_client: bigquery.Client, model_path: str) -> tuple[bool, str | None]:
+    """Validate that the embedding model exists and is accessible.
+
+    Returns (is_valid, error_message).
+    """
+    # Parse model path: project.dataset.model or dataset.model
+    parts = model_path.split(".")
+    if len(parts) == 3:
+        project_id, dataset_id, model_id = parts
+    elif len(parts) == 2:
+        project_id = bigquery_client.project
+        dataset_id, model_id = parts
+    else:
+        return False, f"Invalid model path format '{model_path}'. Expected: project.dataset.model or dataset.model"
+
+    # Check if model exists using get_model
+    model_ref = f"{project_id}.{dataset_id}.{model_id}"
+    try:
+        await asyncio.to_thread(bigquery_client.get_model, model_ref)
+    except Exception as e:
+        error_str = str(e)
+        if "Not found" in error_str or "404" in error_str:
+            return False, f"Embedding model not found: {model_path}"
+        if "Access Denied" in error_str or "403" in error_str:
+            return False, f"Access denied to embedding model: {model_path}. Check permissions."
+        return False, f"Error validating embedding model '{model_path}': {error_str}"
+    return True, None
 
 
 def _calculate_search_fetch_limit(max_results: int, search: str) -> int:
@@ -545,75 +576,31 @@ def register_tools(  # noqa: C901
             return _create_error_response(e)
 
     # Helper functions for vector search (defined inside register_tools to access bigquery_client)
-    def _add_embedding_row_to_dict(
-        tables_dict: dict[str, dict[str, Any]], dataset_id: str, table_id: str, column_name: str
-    ) -> None:
-        """Add a row from embedding query results to the tables dictionary."""
-        key = f"{dataset_id}.{table_id}"
-        if key not in tables_dict:
-            tables_dict[key] = {
-                "dataset_id": dataset_id,
-                "table_id": table_id,
-                "full_path": key,
-                "embedding_columns": [],
-            }
-        tables_dict[key]["embedding_columns"].append(column_name)
 
-    async def _query_dataset_embedding_columns(
-        project_id: str, ds_id: str, pattern: str | None, tables_dict: dict[str, dict[str, Any]]
-    ) -> None:
-        """Query a single dataset for embedding columns and add to tables_dict."""
-        ds_query = f"""
-        SELECT
-            '{ds_id}' as dataset_id,
-            table_name as table_id,
-            column_name
-        FROM `{project_id}.{ds_id}`.INFORMATION_SCHEMA.COLUMNS
-        WHERE data_type = 'ARRAY<FLOAT64>'
-        """  # noqa: S608
+    def _get_configured_embedding_tables() -> list[dict[str, Any]] | None:
+        """Parse BIGQUERY_EMBEDDING_TABLES env var into table info list."""
+        configured_tables = get_embedding_tables()
+        if not configured_tables:
+            return None
 
-        if pattern:
-            ds_query += f" AND LOWER(column_name) LIKE '%{pattern.lower()}%'"
+        embedding_tables = []
+        column_pattern = get_embedding_column_contains()
+        for table_path in configured_tables:
+            parts = table_path.split(".")
+            if len(parts) == 2:
+                embedding_tables.append({
+                    "dataset_id": parts[0],
+                    "table_id": parts[1],
+                    "full_path": table_path,
+                    "embedding_column_contains": column_pattern,
+                })
+        return embedding_tables
 
-        ds_query_job = bigquery_client.query(ds_query)
-        ds_results = await asyncio.to_thread(ds_query_job.result)
-
-        for row in ds_results:
-            _add_embedding_row_to_dict(tables_dict, row.dataset_id, row.table_id, row.column_name)
-
-    async def _fallback_dataset_level_search(
-        project_id: str,
-        pattern: str | None,
-        dataset_id: str | None,
-        tables_dict: dict[str, dict[str, Any]],
-    ) -> None:
-        """Fall back to querying each dataset individually for embedding columns."""
-        # Get list of datasets to query
-        if dataset_id:
-            datasets_to_query = [dataset_id]
-        elif allowed_datasets:
-            datasets_to_query = list(allowed_datasets)
-        else:
-            datasets_list = await asyncio.to_thread(lambda: list(bigquery_client.list_datasets(max_results=100)))
-            datasets_to_query = [ds.dataset_id for ds in datasets_list]
-
-        async def query_single_dataset(ds_id: str) -> None:
-            """Query a single dataset, ignoring errors."""
-            with contextlib.suppress(GoogleCloudError):
-                await _query_dataset_embedding_columns(project_id, ds_id, pattern, tables_dict)
-
-        # Query all datasets in parallel for better performance
-        await asyncio.gather(*[query_single_dataset(ds_id) for ds_id in datasets_to_query])
-
-    async def _try_region_level_query(
-        project_id: str,
-        region: str,
-        pattern: str | None,
-        dataset_id: str | None,
-        tables_dict: dict[str, dict[str, Any]],
-    ) -> bool:
-        """Try region-level INFORMATION_SCHEMA query. Returns True if successful, False if permission denied."""
-        global _region_info_schema_available
+    async def _query_information_schema_for_embeddings() -> dict[str, Any]:
+        """Query region-level INFORMATION_SCHEMA for embedding columns."""
+        project_id = bigquery_client.project
+        region = location or "US"
+        pattern = get_embedding_column_contains()
 
         query = f"""
         SELECT table_schema as dataset_id, table_name as table_id, column_name
@@ -623,62 +610,80 @@ def register_tools(  # noqa: C901
 
         if pattern:
             query += f" AND LOWER(column_name) LIKE '%{pattern.lower()}%'"
-        if dataset_id:
-            query += f" AND table_schema = '{dataset_id}'"
-        elif allowed_datasets:
+        if allowed_datasets:
             datasets_str = "', '".join(allowed_datasets)
             query += f" AND table_schema IN ('{datasets_str}')"
 
         query += " ORDER BY table_schema, table_name, column_name"
 
-        try:
-            results = await asyncio.to_thread(bigquery_client.query(query).result)
-            for row in results:
-                _add_embedding_row_to_dict(tables_dict, row.dataset_id, row.table_id, row.column_name)
-        except GoogleCloudError as e:
-            if "Access Denied" in str(e) or "403" in str(e):
-                _region_info_schema_available = False
-                return False
-            raise
-        else:
-            _region_info_schema_available = True
-            return True
+        results = await asyncio.to_thread(bigquery_client.query(query).result)
 
-    async def _discover_embedding_tables(pattern: str, dataset_id: str | None, refresh: bool) -> dict[str, Any]:
-        """Discovery mode: find tables with embedding columns."""
-        cache_key = f"{pattern}:{dataset_id or 'all'}"
+        tables_dict: dict[str, dict[str, Any]] = {}
+        for row in results:
+            key = f"{row.dataset_id}.{row.table_id}"
+            if key not in tables_dict:
+                tables_dict[key] = {
+                    "dataset_id": row.dataset_id,
+                    "table_id": row.table_id,
+                    "full_path": key,
+                    "embedding_columns": [],
+                }
+            tables_dict[key]["embedding_columns"].append(row.column_name)
+
+        return {"tables": list(tables_dict.values()), "pattern": pattern}
+
+    async def _discover_embedding_tables(refresh: bool) -> dict[str, Any]:
+        """Discovery mode: find tables with embedding columns.
+
+        Uses one of two strategies:
+        1. If BIGQUERY_EMBEDDING_TABLES is set: return those tables directly (fastest)
+        2. Otherwise: query region-level INFORMATION_SCHEMA (requires BigQuery Metadata Viewer role)
+        """
+        cache_key = "embedding_tables"
 
         # Check cache unless refresh requested
         if not refresh and cache_key in _embedding_tables_cache:
             cached = _embedding_tables_cache[cache_key]
             return _create_success_response(data=cached, total_count=len(cached), cached=True, mode="discovery")
 
-        # Check allowed datasets restriction
-        if dataset_id and allowed_datasets and dataset_id not in allowed_datasets:
-            return _create_error_response(Exception(f"Access to dataset '{dataset_id}' is not allowed"))
+        # Strategy 1: Use explicitly configured tables (recommended for production)
+        configured = _get_configured_embedding_tables()
+        if configured:
+            _embedding_tables_cache[cache_key] = configured
+            return _create_success_response(
+                data=configured,
+                total_count=len(configured),
+                cached=False,
+                mode="discovery",
+                source="BIGQUERY_EMBEDDING_TABLES",
+            )
 
-        project_id = bigquery_client.project
-        region = location or "US"
-        tables_dict: dict[str, dict[str, Any]] = {}
+        # Strategy 2: Query region-level INFORMATION_SCHEMA
+        try:
+            result = await _query_information_schema_for_embeddings()
+            embedding_tables = result["tables"]
+            _embedding_tables_cache[cache_key] = embedding_tables
 
-        # Use cached knowledge of whether region-level INFORMATION_SCHEMA works
-        if _region_info_schema_available is False:
-            await _fallback_dataset_level_search(project_id, pattern, dataset_id, tables_dict)
-        else:
-            success = await _try_region_level_query(project_id, region, pattern, dataset_id, tables_dict)
-            if not success:
-                await _fallback_dataset_level_search(project_id, pattern, dataset_id, tables_dict)
+            return _create_success_response(
+                data=embedding_tables,
+                total_count=len(embedding_tables),
+                cached=False,
+                mode="discovery",
+                column_pattern=result["pattern"],
+                source="INFORMATION_SCHEMA",
+            )
 
-        embedding_tables = list(tables_dict.values())
-        _embedding_tables_cache[cache_key] = embedding_tables
-
-        return _create_success_response(
-            data=embedding_tables,
-            total_count=len(embedding_tables),
-            cached=False,
-            mode="discovery",
-            column_pattern=pattern,
-        )
+        except GoogleCloudError as e:
+            error_str = str(e)
+            if "Access Denied" in error_str or "403" in error_str:
+                return _create_error_response(
+                    Exception(
+                        "Discovery requires 'BigQuery Metadata Viewer' role on the project, "
+                        "or set BIGQUERY_EMBEDDING_TABLES env var to skip discovery. "
+                        "Example: BIGQUERY_EMBEDDING_TABLES=dataset.table1,dataset.table2"
+                    )
+                )
+            raise
 
     async def _execute_vector_search(
         query_text: str,
@@ -740,48 +745,114 @@ def register_tools(  # noqa: C901
 
     # Vector search tool (conditionally registered)
     if is_vector_search_enabled():
+        # Validate embedding model on startup if configured
+        embedding_model = get_default_embedding_model()
+        if embedding_model:
+
+            def _validate_model_sync() -> None:
+                """Synchronous validation wrapper."""
+                # Parse model path and validate synchronously
+                parts = embedding_model.split(".")
+                if len(parts) == 3:
+                    project_id, dataset_id, model_id = parts
+                elif len(parts) == 2:
+                    project_id = bigquery_client.project
+                    dataset_id, model_id = parts
+                else:
+                    print(
+                        f"WARNING: Invalid model path format '{embedding_model}'. "
+                        "Expected: project.dataset.model or dataset.model",
+                        file=sys.stderr,
+                    )
+                    return
+
+                model_ref = f"{project_id}.{dataset_id}.{model_id}"
+                try:
+                    bigquery_client.get_model(model_ref)
+                except Exception as e:
+                    error_str = str(e)
+                    if "Not found" in error_str or "404" in error_str:
+                        print(f"WARNING: Embedding model not found: {embedding_model}", file=sys.stderr)
+                    elif "Access Denied" in error_str or "403" in error_str:
+                        print(
+                            f"WARNING: Access denied to embedding model: {embedding_model}. Check permissions.",
+                            file=sys.stderr,
+                        )
+                    else:
+                        print(
+                            f"WARNING: Error validating embedding model '{embedding_model}': {error_str}",
+                            file=sys.stderr,
+                        )
+
+            _validate_model_sync()
 
         @mcp.tool(
-            description="Vector search: discover embedding tables (no query_text) or perform semantic search (with query_text). Configure BIGQUERY_EMBEDDING_MODEL and BIGQUERY_EMBEDDING_COLUMN env vars."
+            description="Vector search: discover embedding tables (no query_text) or perform semantic search (with query_text). Configure BIGQUERY_EMBEDDING_MODEL env var for search mode."
         )
         async def vector_search(
             query_text: Annotated[
-                str | None,
-                Field(description="Text to search for. If omitted, discovers tables with embedding columns."),
-            ] = None,
+                str,
+                Field(description="Text to search for semantically. Example: 'sentence to search for'"),
+            ] = "",
             table_path: Annotated[
-                str | None,
-                Field(description="Table path: 'dataset.table'. Required for search."),
-            ] = None,
-            top_k: Annotated[int, Field(description="Number of results (1-1000)", default=10)] = 10,
+                str,
+                Field(description="Table path as 'dataset.table'. Example: 'my_dataset.products'"),
+            ] = "",
+            top_k: Annotated[
+                str,
+                Field(description="Number of results to return (1-1000). Example: '10'"),
+            ] = "10",
             select_columns: Annotated[
-                list[str] | None,
-                Field(description="Columns to return (default: all)"),
-            ] = None,
+                str,
+                Field(
+                    description="Comma-separated columns to return, or empty for all. Example: 'name,description,price'"
+                ),
+            ] = "",
+            embedding_column: Annotated[
+                str,
+                Field(description="Name of the embedding column. Example: 'embedding'"),
+            ] = "embedding",
         ) -> dict[str, Any]:
             """Vector search tool with two modes:
 
-            **Discovery mode** (no query_text): Find tables with embedding columns.
+            **Discovery mode** (empty query_text): Find tables with embedding columns.
+            Uses BIGQUERY_EMBEDDING_COLUMN_CONTAINS to filter columns (default: 'embedding').
+
             **Search mode** (with query_text): Perform semantic similarity search.
 
             Configure via environment:
-            - BIGQUERY_EMBEDDING_MODEL: Required for search
-            - BIGQUERY_EMBEDDING_COLUMN: Column name (default: 'embedding')
+            - BIGQUERY_EMBEDDING_MODEL: Required for search (validated on startup)
+            - BIGQUERY_EMBEDDING_COLUMN_CONTAINS: Pattern to find embedding columns in discovery (default: 'embedding')
             - BIGQUERY_DISTANCE_TYPE: COSINE, EUCLIDEAN, DOT_PRODUCT (default: COSINE)
             """
             try:
+                # Normalize empty strings to None-like behavior
+                query_text_clean = query_text.strip() if query_text else ""
+                table_path_clean = table_path.strip() if table_path else ""
+                select_columns_clean = select_columns.strip() if select_columns else ""
+                embedding_column_clean = embedding_column.strip() if embedding_column else "embedding"
+
+                # Parse top_k from string
+                try:
+                    top_k_int = int(top_k) if top_k else 10
+                except ValueError:
+                    return _create_error_response(Exception(f"top_k must be a number, got: '{top_k}'"))
+
+                # Parse select_columns from comma-separated string
+                select_columns_list: list[str] | None = None
+                if select_columns_clean:
+                    select_columns_list = [col.strip() for col in select_columns_clean.split(",") if col.strip()]
+
                 # Discovery mode: no query_text provided
-                if query_text is None:
-                    pattern = get_vector_column_contains()
-                    return await _discover_embedding_tables(pattern, None, False)
+                if not query_text_clean:
+                    return await _discover_embedding_tables(refresh=False)
 
                 # Search mode: validate required parameters
-                if not table_path:
+                if not table_path_clean:
                     return _create_error_response(
-                        Exception("table_path is required for search. Omit query_text to discover tables.")
+                        Exception("table_path is required for search. Leave query_text empty to discover tables.")
                     )
 
-                embedding_column = os.getenv("BIGQUERY_EMBEDDING_COLUMN", "embedding")
                 model = get_default_embedding_model()
                 if not model:
                     return _create_error_response(
@@ -795,11 +866,17 @@ def register_tools(  # noqa: C901
                         Exception(f"Invalid BIGQUERY_DISTANCE_TYPE '{distance_type}'. Must be: {valid_distance_types}")
                     )
 
-                if top_k < 1 or top_k > 1000:
+                if top_k_int < 1 or top_k_int > 1000:
                     return _create_error_response(Exception("top_k must be between 1 and 1000"))
 
                 return await _execute_vector_search(
-                    query_text, table_path, embedding_column, model, top_k, select_columns, distance_type
+                    query_text_clean,
+                    table_path_clean,
+                    embedding_column_clean,
+                    model,
+                    top_k_int,
+                    select_columns_list,
+                    distance_type,
                 )
 
             except (GoogleCloudError, Exception) as e:

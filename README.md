@@ -126,13 +126,10 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
 ```
 
 ### Vector Search Configuration
+See [Vector Search](#-vector-search-optional) section for full setup instructions.
 ```bash
-# Required for search mode
-export BIGQUERY_EMBEDDING_MODEL=project.dataset.embedding_model
-
-# Optional (with defaults)
-export BIGQUERY_EMBEDDING_COLUMN=embedding    # Column containing embeddings
-export BIGQUERY_DISTANCE_TYPE=COSINE          # COSINE, EUCLIDEAN, DOT_PRODUCT
+export BIGQUERY_EMBEDDING_MODEL=project.dataset.model  # Required for search
+export BIGQUERY_EMBEDDING_TABLES=dataset.table1,dataset.table2  # Recommended
 ```
 
 ## 🛠️ Tools Overview
@@ -156,84 +153,108 @@ This MCP server provides 5 BigQuery tools optimized for LLM efficiency:
 - ✅ **LLM-optimized** - Returns structured data perfect for AI analysis
 - ✅ **Cost transparent** - Shows bytes processed for each query
 
-## 🔮 Vector Search
+## 🔮 Vector Search (Optional)
 
-The MCP server includes an optional `vector_search` tool for working with vector embeddings in BigQuery.
+Enable semantic similarity search using BigQuery vector embeddings.
 
-### MCP Config Example with Vector Search
+### Prerequisites: Setting Up Embeddings in BigQuery
+
+Before using vector search, you need an embedding model and tables with embeddings:
+
+**Step 1: Create a Vertex AI connection** (one-time setup)
+```sql
+-- In BigQuery console or bq command line
+-- This creates a connection to Vertex AI for generating embeddings
+CREATE EXTERNAL CONNECTION `your-project.your-region.vertex-ai`
+  OPTIONS (
+    endpoint = 'https://your-region-aiplatform.googleapis.com',
+    type = 'CLOUD_RESOURCE'
+  );
+```
+
+**Step 2: Create the embedding model**
+```sql
+CREATE OR REPLACE MODEL `your-project.your_dataset.text_embedding_model`
+REMOTE WITH CONNECTION `your-project.your-region.vertex-ai`
+OPTIONS (ENDPOINT = 'text-embedding-005');
+```
+
+**Step 3: Add embeddings to your table**
+```sql
+-- Add embedding column to existing table
+ALTER TABLE `your-project.your_dataset.products`
+ADD COLUMN IF NOT EXISTS embedding ARRAY<FLOAT64>;
+
+-- Generate embeddings for your text data
+UPDATE `your-project.your_dataset.products` t
+SET embedding = (
+  SELECT ml_generate_embedding_result
+  FROM ML.GENERATE_EMBEDDING(
+    MODEL `your-project.your_dataset.text_embedding_model`,
+    (SELECT t.name AS content),
+    STRUCT(TRUE AS flatten_json_output)
+  )
+)
+WHERE embedding IS NULL;
+```
+
+> See [BigQuery text embeddings documentation](https://cloud.google.com/bigquery/docs/generate-text-embedding) for detailed setup instructions and connection permissions.
+
+### MCP Configuration for Vector Search
+
+Once you have embeddings set up, configure the MCP server:
 
 ```json
 {
   "mcpServers": {
     "bigquery": {
       "command": "uvx",
-      "args": ["bigquery-mcp"],
+      "args": ["bigquery-mcp", "--project", "your-project", "--location", "US"],
       "env": {
-        "GCP_PROJECT_ID": "my-project",
-        "BIGQUERY_LOCATION": "US",
-        "BIGQUERY_EMBEDDING_MODEL": "my-project.my_dataset.embedding_model",
-        "BIGQUERY_EMBEDDING_COLUMN": "embedding",
-        "BIGQUERY_DISTANCE_TYPE": "COSINE"
+        "BIGQUERY_EMBEDDING_MODEL": "your-project.your_dataset.text_embedding_model",
+        "BIGQUERY_EMBEDDING_TABLES": "your_dataset.products,your_dataset.documents"
       }
     }
   }
 }
 ```
 
-### vector_search Tool
+### Configuration Reference
 
-A dual-mode tool that either discovers embedding tables or performs semantic similarity search.
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `BIGQUERY_EMBEDDING_MODEL` | Yes | - | Full path to embedding model (`project.dataset.model`). Validated on startup. |
+| `BIGQUERY_EMBEDDING_TABLES` | Recommended | - | Comma-separated tables with embeddings (skips auto-discovery) |
+| `BIGQUERY_EMBEDDING_COLUMN_CONTAINS` | No | `embedding` | Pattern for finding embedding columns (column name must contain this) |
+| `BIGQUERY_DISTANCE_TYPE` | No | `COSINE` | Distance metric: `COSINE`, `EUCLIDEAN`, `DOT_PRODUCT` |
+| `BIGQUERY_VECTOR_SEARCH_ENABLED` | No | `true` | Set to `false` to disable vector search |
 
-**Discovery Mode** (no query_text): Find tables with embedding columns
+### Usage Examples
 
-```python
-# Find all tables with embedding columns
-vector_search()
+**Discovery mode** - find tables with embeddings:
+```json
+{
+  "query_text": ""
+}
 ```
 
-**Search Mode** (with query_text): Perform semantic similarity search
-
-```python
-vector_search(
-    query_text="solenoid valve for water",
-    table_path="my_dataset.products",
-    top_k=10,
-    select_columns=["name", "description", "price"]  # Optional
-)
+**Search mode** - semantic similarity search:
+```json
+{
+  "query_text": "solenoid valve for water",
+  "table_path": "my_dataset.products",
+  "top_k": "10",
+  "select_columns": "name,description,price"
+}
 ```
 
-All other settings (embedding model, column name, distance type) are configured via environment variables.
+### Required Permissions
 
-### Vector Search Requirements
-
-- Tables must have an `ARRAY<FLOAT64>` column containing embeddings
-- An embedding model must be configured in BigQuery ML
-- For best performance on large tables (>5000 rows), create a vector index
-
-### Example: Custom Vector Search with run_query
-
-For advanced queries, use `run_query` directly:
-
-```sql
-WITH query AS (
-  SELECT ml_generate_embedding_result AS embedding
-  FROM ML.GENERATE_EMBEDDING(
-    MODEL `project.dataset.embedding_model`,
-    (SELECT "search text" AS content),
-    STRUCT(TRUE AS flatten_json_output))
-)
-SELECT
-  base.name,
-  base.category,
-  ROUND((1 - distance) * 100, 1) AS similarity_pct
-FROM VECTOR_SEARCH(
-  TABLE `project.dataset.products`,
-  "embedding",
-  (SELECT embedding FROM query),
-  top_k => 10,
-  distance_type => "COSINE")
-ORDER BY distance
-```
+| Role | Purpose |
+|------|---------|
+| `roles/bigquery.dataViewer` | Read tables and models |
+| `roles/bigquery.jobUser` | Run BigQuery jobs |
+| `roles/bigquery.metadataViewer` | Auto-discover embedding tables (optional) |
 
 ## 🏗️ Development Setup
 

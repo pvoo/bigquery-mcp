@@ -28,7 +28,7 @@ def mock_mcp_and_client():
 def enable_vector_search(monkeypatch):
     """Enable vector search for tests."""
     monkeypatch.setenv("BIGQUERY_VECTOR_SEARCH_ENABLED", "true")
-    monkeypatch.setenv("BIGQUERY_VECTOR_COLUMN_CONTAINS", "embedding")
+    monkeypatch.setenv("BIGQUERY_EMBEDDING_COLUMN_CONTAINS", "embedding")
 
 
 @pytest.mark.asyncio
@@ -124,7 +124,7 @@ async def test_vector_search_basic_functionality(mock_mcp_and_client, monkeypatc
     """Test that vector_search performs similarity search."""
     monkeypatch.setenv("BIGQUERY_VECTOR_SEARCH_ENABLED", "true")
     monkeypatch.setenv("BIGQUERY_EMBEDDING_MODEL", "my_project.my_dataset.my_model")
-    monkeypatch.setenv("BIGQUERY_EMBEDDING_COLUMN", "embedding")
+    monkeypatch.setenv("BIGQUERY_EMBEDDING_COLUMN_CONTAINS", "embedding")
 
     from bigquery_mcp.bigquery_tools import register_tools
 
@@ -148,7 +148,7 @@ async def test_vector_search_basic_functionality(mock_mcp_and_client, monkeypatc
     result = await vector_search(
         query_text="solenoid valve for water",
         table_path="my_dataset.my_table",
-        top_k=10,
+        top_k="10",
     )
 
     assert result["success"] is True
@@ -217,7 +217,7 @@ async def test_vector_search_invalid_top_k(mock_mcp_and_client, monkeypatch):
     result = await vector_search(
         query_text="test",
         table_path="dataset.table",
-        top_k=0,
+        top_k="0",
     )
     assert result["success"] is False
     assert "top_k" in result["error"]
@@ -226,7 +226,7 @@ async def test_vector_search_invalid_top_k(mock_mcp_and_client, monkeypatch):
     result = await vector_search(
         query_text="test",
         table_path="dataset.table",
-        top_k=1001,
+        top_k="1001",
     )
     assert result["success"] is False
     assert "top_k" in result["error"]
@@ -253,7 +253,7 @@ async def test_vector_search_with_select_columns(mock_mcp_and_client, monkeypatc
     await vector_search(
         query_text="test",
         table_path="dataset.table",
-        select_columns=["name", "price"],
+        select_columns="name,price",
     )
 
     # Verify select clause includes specified columns
