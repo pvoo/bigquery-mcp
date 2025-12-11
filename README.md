@@ -128,12 +128,9 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
 ### Vector Search Configuration
 See [Vector Search](#-vector-search-optional) section for full setup instructions.
 ```bash
-# CLI argument (preferred)
 --embedding-model project.dataset.model
-
-# Or environment variable
-export BIGQUERY_EMBEDDING_MODEL=project.dataset.model
-export BIGQUERY_EMBEDDING_TABLES=dataset.table1,dataset.table2  # env var only
+--embedding-tables dataset.table1 dataset.table2
+--distance-type COSINE
 ```
 
 ## 🛠️ Tools Overview
@@ -217,11 +214,9 @@ Once you have embeddings set up, configure the MCP server:
         "bigquery-mcp",
         "--project", "your-project",
         "--location", "US",
-        "--embedding-model", "your-project.your_dataset.text_embedding_model"
-      ],
-      "env": {
-        "BIGQUERY_EMBEDDING_TABLES": "your_dataset.products,your_dataset.documents"
-      }
+        "--embedding-model", "your-project.your_dataset.text_embedding_model",
+        "--embedding-tables", "your_dataset.products", "your_dataset.documents"
+      ]
     }
   }
 }
@@ -232,10 +227,10 @@ Once you have embeddings set up, configure the MCP server:
 | CLI Argument | Environment Variable | Default | Description |
 |--------------|---------------------|---------|-------------|
 | `--embedding-model` | `BIGQUERY_EMBEDDING_MODEL` | - | **Required.** Full path to embedding model (`project.dataset.model`). Validated on startup. |
+| `--embedding-tables` | `BIGQUERY_EMBEDDING_TABLES` | - | Tables with embedding columns (skips auto-discovery) |
 | `--vector-column-contains` | `BIGQUERY_EMBEDDING_COLUMN_CONTAINS` | `embedding` | Pattern for finding embedding columns (column name must contain this) |
+| `--distance-type` | `BIGQUERY_DISTANCE_TYPE` | `COSINE` | Distance metric: `COSINE`, `EUCLIDEAN`, `DOT_PRODUCT` |
 | `--no-vector-search` | `BIGQUERY_VECTOR_SEARCH_ENABLED=false` | enabled | Disable vector search tools |
-| - | `BIGQUERY_EMBEDDING_TABLES` | - | Comma-separated tables with embeddings (skips auto-discovery) |
-| - | `BIGQUERY_DISTANCE_TYPE` | `COSINE` | Distance metric: `COSINE`, `EUCLIDEAN`, `DOT_PRODUCT` |
 
 ### Usage Examples
 

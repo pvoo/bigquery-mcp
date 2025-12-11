@@ -39,6 +39,11 @@ Environment Variables (can be overridden by CLI arguments):
   BIGQUERY_LIST_MAX_RESULTS_DETAILED Max results for detailed list operations (default: 25)
   BIGQUERY_SAMPLE_ROWS              Sample data rows in table details (default: 3)
   BIGQUERY_SAMPLE_ROWS_FOR_STATS    Rows sampled for fill rates (default: 500)
+  BIGQUERY_EMBEDDING_MODEL          BigQuery ML embedding model path
+  BIGQUERY_EMBEDDING_TABLES         Comma-separated tables with embeddings
+  BIGQUERY_EMBEDDING_COLUMN_CONTAINS Pattern for finding embedding columns (default: 'embedding')
+  BIGQUERY_DISTANCE_TYPE            Distance metric: COSINE, EUCLIDEAN, DOT_PRODUCT (default: COSINE)
+  BIGQUERY_VECTOR_SEARCH_ENABLED    Enable/disable vector search (default: true)
 
 Examples:
   # Using environment variables
@@ -131,6 +136,20 @@ Examples:
     )
 
     parser.add_argument(
+        "--embedding-tables",
+        nargs="+",
+        dest="embedding_tables",
+        help="Tables with embedding columns (e.g., 'dataset.table1 dataset.table2')",
+    )
+
+    parser.add_argument(
+        "--distance-type",
+        dest="distance_type",
+        choices=["COSINE", "EUCLIDEAN", "DOT_PRODUCT"],
+        help="Distance metric for vector search (default: 'COSINE')",
+    )
+
+    parser.add_argument(
         "--check-auth",
         action="store_true",
         dest="check_auth",
@@ -150,34 +169,30 @@ def _set_environment_overrides(
     vector_search_enabled: bool | None = None,
     embedding_model: str | None = None,
     vector_column_contains: str | None = None,
+    embedding_tables: list[str] | None = None,
+    distance_type: str | None = None,
 ) -> None:
     """Set environment variables for configuration overrides."""
-    if list_max_results is not None:
-        os.environ["BIGQUERY_LIST_MAX_RESULTS"] = str(list_max_results)
+    # Map of env var name -> value (only set if value is not None/empty)
+    overrides: dict[str, str | None] = {
+        "BIGQUERY_LIST_MAX_RESULTS": str(list_max_results) if list_max_results is not None else None,
+        "BIGQUERY_LIST_MAX_RESULTS_DETAILED": str(detailed_list_max) if detailed_list_max is not None else None,
+        "BIGQUERY_SAMPLE_ROWS": str(sample_rows) if sample_rows is not None else None,
+        "BIGQUERY_SAMPLE_ROWS_FOR_STATS": str(stats_sample_size) if stats_sample_size is not None else None,
+        "GOOGLE_APPLICATION_CREDENTIALS": key_file,
+        "BIGQUERY_ALLOWED_DATASETS": ",".join(allowed_datasets) if allowed_datasets else None,
+        "BIGQUERY_VECTOR_SEARCH_ENABLED": str(vector_search_enabled).lower()
+        if vector_search_enabled is not None
+        else None,
+        "BIGQUERY_EMBEDDING_MODEL": embedding_model,
+        "BIGQUERY_EMBEDDING_COLUMN_CONTAINS": vector_column_contains,
+        "BIGQUERY_EMBEDDING_TABLES": ",".join(embedding_tables) if embedding_tables else None,
+        "BIGQUERY_DISTANCE_TYPE": distance_type,
+    }
 
-    if detailed_list_max is not None:
-        os.environ["BIGQUERY_LIST_MAX_RESULTS_DETAILED"] = str(detailed_list_max)
-
-    if sample_rows is not None:
-        os.environ["BIGQUERY_SAMPLE_ROWS"] = str(sample_rows)
-
-    if stats_sample_size is not None:
-        os.environ["BIGQUERY_SAMPLE_ROWS_FOR_STATS"] = str(stats_sample_size)
-
-    if key_file:
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = key_file
-
-    if allowed_datasets:
-        os.environ["BIGQUERY_ALLOWED_DATASETS"] = ",".join(allowed_datasets)
-
-    if vector_search_enabled is not None:
-        os.environ["BIGQUERY_VECTOR_SEARCH_ENABLED"] = str(vector_search_enabled).lower()
-
-    if embedding_model:
-        os.environ["BIGQUERY_EMBEDDING_MODEL"] = embedding_model
-
-    if vector_column_contains:
-        os.environ["BIGQUERY_EMBEDDING_COLUMN_CONTAINS"] = vector_column_contains
+    for key, value in overrides.items():
+        if value:
+            os.environ[key] = value
 
 
 def run_server(
@@ -193,6 +208,8 @@ def run_server(
     vector_search_enabled: bool | None = None,
     embedding_model: str | None = None,
     vector_column_contains: str | None = None,
+    embedding_tables: list[str] | None = None,
+    distance_type: str | None = None,
 ) -> None:
     """Run the BigQuery MCP server with the given configuration.
 
@@ -209,6 +226,8 @@ def run_server(
         vector_search_enabled: Optional override for vector search enabled/disabled
         embedding_model: Optional default embedding model path
         vector_column_contains: Optional column pattern for finding vector columns
+        embedding_tables: Optional list of tables with embedding columns
+        distance_type: Optional distance metric for vector search
     """
     # Set environment variables for configuration overrides
     _set_environment_overrides(
@@ -221,6 +240,8 @@ def run_server(
         vector_search_enabled=vector_search_enabled,
         embedding_model=embedding_model,
         vector_column_contains=vector_column_contains,
+        embedding_tables=embedding_tables,
+        distance_type=distance_type,
     )
 
     # Initialize BigQuery client with configured project
@@ -323,6 +344,8 @@ def main() -> None:
             vector_search_enabled=args.vector_search_enabled,
             embedding_model=args.embedding_model,
             vector_column_contains=args.vector_column_contains,
+            embedding_tables=args.embedding_tables,
+            distance_type=args.distance_type,
         )
     except KeyboardInterrupt:
         print("\nServer stopped by user.", file=sys.stderr)
