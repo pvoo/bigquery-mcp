@@ -177,7 +177,7 @@ def _set_environment_overrides(
         os.environ["BIGQUERY_EMBEDDING_MODEL"] = embedding_model
 
     if vector_column_contains:
-        os.environ["BIGQUERY_VECTOR_COLUMN_CONTAINS"] = vector_column_contains
+        os.environ["BIGQUERY_EMBEDDING_COLUMN_CONTAINS"] = vector_column_contains
 
 
 def run_server(

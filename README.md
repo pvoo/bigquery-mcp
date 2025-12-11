@@ -128,8 +128,12 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
 ### Vector Search Configuration
 See [Vector Search](#-vector-search-optional) section for full setup instructions.
 ```bash
-export BIGQUERY_EMBEDDING_MODEL=project.dataset.model  # Required for search
-export BIGQUERY_EMBEDDING_TABLES=dataset.table1,dataset.table2  # Recommended
+# CLI argument (preferred)
+--embedding-model project.dataset.model
+
+# Or environment variable
+export BIGQUERY_EMBEDDING_MODEL=project.dataset.model
+export BIGQUERY_EMBEDDING_TABLES=dataset.table1,dataset.table2  # env var only
 ```
 
 ## 🛠️ Tools Overview
@@ -209,9 +213,13 @@ Once you have embeddings set up, configure the MCP server:
   "mcpServers": {
     "bigquery": {
       "command": "uvx",
-      "args": ["bigquery-mcp", "--project", "your-project", "--location", "US"],
+      "args": [
+        "bigquery-mcp",
+        "--project", "your-project",
+        "--location", "US",
+        "--embedding-model", "your-project.your_dataset.text_embedding_model"
+      ],
       "env": {
-        "BIGQUERY_EMBEDDING_MODEL": "your-project.your_dataset.text_embedding_model",
         "BIGQUERY_EMBEDDING_TABLES": "your_dataset.products,your_dataset.documents"
       }
     }
@@ -221,13 +229,13 @@ Once you have embeddings set up, configure the MCP server:
 
 ### Configuration Reference
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `BIGQUERY_EMBEDDING_MODEL` | Yes | - | Full path to embedding model (`project.dataset.model`). Validated on startup. |
-| `BIGQUERY_EMBEDDING_TABLES` | Recommended | - | Comma-separated tables with embeddings (skips auto-discovery) |
-| `BIGQUERY_EMBEDDING_COLUMN_CONTAINS` | No | `embedding` | Pattern for finding embedding columns (column name must contain this) |
-| `BIGQUERY_DISTANCE_TYPE` | No | `COSINE` | Distance metric: `COSINE`, `EUCLIDEAN`, `DOT_PRODUCT` |
-| `BIGQUERY_VECTOR_SEARCH_ENABLED` | No | `true` | Set to `false` to disable vector search |
+| CLI Argument | Environment Variable | Default | Description |
+|--------------|---------------------|---------|-------------|
+| `--embedding-model` | `BIGQUERY_EMBEDDING_MODEL` | - | **Required.** Full path to embedding model (`project.dataset.model`). Validated on startup. |
+| `--vector-column-contains` | `BIGQUERY_EMBEDDING_COLUMN_CONTAINS` | `embedding` | Pattern for finding embedding columns (column name must contain this) |
+| `--no-vector-search` | `BIGQUERY_VECTOR_SEARCH_ENABLED=false` | enabled | Disable vector search tools |
+| - | `BIGQUERY_EMBEDDING_TABLES` | - | Comma-separated tables with embeddings (skips auto-discovery) |
+| - | `BIGQUERY_DISTANCE_TYPE` | `COSINE` | Distance metric: `COSINE`, `EUCLIDEAN`, `DOT_PRODUCT` |
 
 ### Usage Examples
 
