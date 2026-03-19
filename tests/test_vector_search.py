@@ -125,6 +125,7 @@ async def test_vector_search_basic_functionality(mock_mcp_and_client, monkeypatc
     monkeypatch.setenv("BIGQUERY_VECTOR_SEARCH_ENABLED", "true")
     monkeypatch.setenv("BIGQUERY_EMBEDDING_MODEL", "my_project.my_dataset.my_model")
     monkeypatch.setenv("BIGQUERY_EMBEDDING_COLUMN_CONTAINS", "embedding")
+    monkeypatch.setenv("BIGQUERY_MAX_BYTES_BILLED", "654321")
 
     from bigquery_mcp.bigquery_tools import register_tools
 
@@ -158,6 +159,8 @@ async def test_vector_search_basic_functionality(mock_mcp_and_client, monkeypatc
     call_args = mock_bigquery_client.query.call_args[0][0]
     assert "VECTOR_SEARCH" in call_args
     assert "ML.GENERATE_EMBEDDING" in call_args
+    job_config = mock_bigquery_client.query.call_args.kwargs["job_config"]
+    assert job_config.maximum_bytes_billed == 654321
 
 
 @pytest.mark.asyncio

@@ -104,6 +104,7 @@ All configuration can be set via CLI arguments or environment variables. CLI arg
 # Query & Result Limits
 --list-max-results 500          # Max results for basic list operations (default: 500)
 --detailed-list-max 25          # Max results for detailed list operations (default: 25)
+--max-bytes-billed 109951162777  # Max bytes billed per query job (~USD 0.50/query)
 
 # Table Analysis
 --sample-rows 3                 # Sample data rows returned in get_table (default: 3)
@@ -121,6 +122,7 @@ export BIGQUERY_LOCATION=US
 export BIGQUERY_ALLOWED_DATASETS=dataset1,dataset2
 export BIGQUERY_LIST_MAX_RESULTS=500
 export BIGQUERY_LIST_MAX_RESULTS_DETAILED=25
+export BIGQUERY_MAX_BYTES_BILLED=109951162777
 export BIGQUERY_SAMPLE_ROWS=3
 export BIGQUERY_SAMPLE_ROWS_FOR_STATS=500
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
@@ -144,7 +146,7 @@ This MCP server provides 5 BigQuery tools optimized for LLM efficiency:
 - **`get_table`** - Complete table analysis with schema and sample data
 
 ### 🔍 Safe Query Execution
-- **`run_query`** - Execute SELECT/WITH queries only, with cost tracking and safety validation. Use LIMIT clause in queries to control result size.
+- **`run_query`** - Execute SELECT/WITH queries only, with cost tracking, safety validation, and a default per-query billing cap of about USD 0.50. Use LIMIT clause in queries to control result size.
 
 ### 🔮 Vector Search (Optional)
 - **`vector_search`** - Dual-mode tool: discover embedding tables (no query_text) or perform semantic similarity search (with query_text)
@@ -154,6 +156,7 @@ This MCP server provides 5 BigQuery tools optimized for LLM efficiency:
 - ✅ **Safe queries only** - Blocks all write operations
 - ✅ **LLM-optimized** - Returns structured data perfect for AI analysis
 - ✅ **Cost transparent** - Shows bytes processed for each query
+- ✅ **Cost bounded by default** - Caps each query job at about USD 0.50 unless reconfigured
 
 ## 🔮 Vector Search (Optional)
 

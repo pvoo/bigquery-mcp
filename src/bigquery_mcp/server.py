@@ -39,6 +39,7 @@ Environment Variables (can be overridden by CLI arguments):
   BIGQUERY_LIST_MAX_RESULTS_DETAILED Max results for detailed list operations (default: 25)
   BIGQUERY_SAMPLE_ROWS              Sample data rows in table details (default: 3)
   BIGQUERY_SAMPLE_ROWS_FOR_STATS    Rows sampled for fill rates (default: 500)
+  BIGQUERY_MAX_BYTES_BILLED         Max bytes billed per query job (default: 109951162777, ~USD 0.50)
   BIGQUERY_EMBEDDING_MODEL          BigQuery ML embedding model path
   BIGQUERY_EMBEDDING_TABLES         Comma-separated tables with embeddings
   BIGQUERY_EMBEDDING_COLUMN_CONTAINS Pattern for finding embedding columns (default: 'embedding')
@@ -115,6 +116,13 @@ Examples:
     )
 
     parser.add_argument(
+        "--max-bytes-billed",
+        type=int,
+        dest="max_bytes_billed",
+        help="Max bytes billed per query job (default: 109951162777, about USD 0.50/query)",
+    )
+
+    parser.add_argument(
         "--vector-search",
         "--no-vector-search",
         dest="vector_search_enabled",
@@ -164,6 +172,7 @@ def _set_environment_overrides(
     detailed_list_max: int | None = None,
     sample_rows: int | None = None,
     stats_sample_size: int | None = None,
+    max_bytes_billed: int | None = None,
     key_file: str | None = None,
     allowed_datasets: list[str] | None = None,
     vector_search_enabled: bool | None = None,
@@ -179,6 +188,7 @@ def _set_environment_overrides(
         "BIGQUERY_LIST_MAX_RESULTS_DETAILED": str(detailed_list_max) if detailed_list_max is not None else None,
         "BIGQUERY_SAMPLE_ROWS": str(sample_rows) if sample_rows is not None else None,
         "BIGQUERY_SAMPLE_ROWS_FOR_STATS": str(stats_sample_size) if stats_sample_size is not None else None,
+        "BIGQUERY_MAX_BYTES_BILLED": str(max_bytes_billed) if max_bytes_billed is not None else None,
         "GOOGLE_APPLICATION_CREDENTIALS": key_file,
         "BIGQUERY_ALLOWED_DATASETS": ",".join(allowed_datasets) if allowed_datasets else None,
         "BIGQUERY_VECTOR_SEARCH_ENABLED": str(vector_search_enabled).lower()
@@ -203,6 +213,7 @@ def run_server(
     detailed_list_max: int | None = None,
     sample_rows: int | None = None,
     stats_sample_size: int | None = None,
+    max_bytes_billed: int | None = None,
     allowed_datasets: list[str] | None = None,
     check_auth_only: bool = False,
     vector_search_enabled: bool | None = None,
@@ -221,6 +232,7 @@ def run_server(
         detailed_list_max: Optional override for detailed list max results
         sample_rows: Optional override for sample data rows
         stats_sample_size: Optional override for stats sampling size
+        max_bytes_billed: Optional override for max bytes billed per query job
         allowed_datasets: Optional list of allowed dataset IDs
         check_auth_only: If True, only check authentication and exit
         vector_search_enabled: Optional override for vector search enabled/disabled
@@ -235,6 +247,7 @@ def run_server(
         detailed_list_max=detailed_list_max,
         sample_rows=sample_rows,
         stats_sample_size=stats_sample_size,
+        max_bytes_billed=max_bytes_billed,
         key_file=key_file,
         allowed_datasets=allowed_datasets,
         vector_search_enabled=vector_search_enabled,
@@ -339,6 +352,7 @@ def main() -> None:
             detailed_list_max=args.detailed_list_max,
             sample_rows=args.sample_rows,
             stats_sample_size=args.stats_sample_size,
+            max_bytes_billed=args.max_bytes_billed,
             allowed_datasets=args.allowed_datasets,
             check_auth_only=args.check_auth,
             vector_search_enabled=args.vector_search_enabled,
