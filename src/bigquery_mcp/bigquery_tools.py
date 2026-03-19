@@ -30,6 +30,7 @@ DEFAULT_LIST_MAX_RESULTS_DETAILED = 25  # When including descriptions, limit for
 DEFAULT_SAMPLE_ROWS = 3  # Number of sample rows to include in table details
 DEFAULT_SAMPLE_ROWS_FOR_STATS = 500  # Number of rows to sample for column statistics
 DEFAULT_MAX_RECOMMENDED_RESULTS = 1000  # Maximum recommended results to prevent context overflow
+DEFAULT_MAX_BYTES_BILLED = 109_951_162_777  # ~0.50 USD/query at 5 USD per TiB scanned
 
 # These can be overridden by environment variables or CLI arguments
 _list_max_results = int(os.getenv("BIGQUERY_LIST_MAX_RESULTS", str(DEFAULT_LIST_MAX_RESULTS)))
@@ -59,6 +60,29 @@ def get_table_sample_data_rows() -> int:
 def get_query_max_recommended_results() -> int:
     """Get maximum recommended results for query execution."""
     return _max_recommended_results
+
+
+def get_query_max_bytes_billed() -> int:
+    """Get maximum bytes billed for a single query job."""
+    return int(os.getenv("BIGQUERY_MAX_BYTES_BILLED", str(DEFAULT_MAX_BYTES_BILLED)))
+
+
+def _create_query_job_config(
+    *,
+    query_parameters: list[bigquery.ScalarQueryParameter] | None = None,
+    dry_run: bool = False,
+    use_query_cache: bool | None = None,
+) -> bigquery.QueryJobConfig:
+    """Create a query job config with the billing cap applied."""
+    job_config = bigquery.QueryJobConfig(
+        maximum_bytes_billed=get_query_max_bytes_billed(),
+        dry_run=dry_run,
+    )
+    if query_parameters is not None:
+        job_config.query_parameters = query_parameters
+    if use_query_cache is not None:
+        job_config.use_query_cache = use_query_cache
+    return job_config
 
 
 # Vector search configuration
@@ -224,7 +248,7 @@ def _calculate_column_fill_rates(
     """  # noqa: S608
 
     try:
-        query_job = bigquery_client.query(query)
+        query_job = bigquery_client.query(query, job_config=_create_query_job_config())
         results = list(query_job.result())
 
         if not results:
@@ -287,7 +311,7 @@ def register_tools(  # noqa: C901
             if not is_safe:
                 return _create_error_response(Exception(error_msg))
 
-            query_job = bigquery_client.query(query)
+            query_job = bigquery_client.query(query, job_config=_create_query_job_config())
             results = await asyncio.to_thread(query_job.result)
 
             rows = [dict(row) for row in results]
@@ -297,6 +321,7 @@ def register_tools(  # noqa: C901
                 total_count=len(rows),
                 total_rows_in_result=results.total_rows,
                 bytes_processed=query_job.total_bytes_processed,
+                max_bytes_billed=get_query_max_bytes_billed(),
             )
 
         except (GoogleCloudError, Exception) as e:
@@ -536,7 +561,7 @@ def register_tools(  # noqa: C901
                 order_clause = f"ORDER BY `{timestamp_columns[0]}` DESC" if timestamp_columns else ""
 
                 sample_query = f"SELECT * FROM `{table_path}` {order_clause} LIMIT {sample_rows_count}"  # noqa: S608
-                query_job = bigquery_client.query(sample_query)
+                query_job = bigquery_client.query(sample_query, job_config=_create_query_job_config())
                 results = await asyncio.to_thread(query_job.result)
                 sample_data = [dict(row) for row in results]
             except Exception:
@@ -616,7 +641,8 @@ def register_tools(  # noqa: C901
 
         query += " ORDER BY table_schema, table_name, column_name"
 
-        results = await asyncio.to_thread(bigquery_client.query(query).result)
+        query_job = bigquery_client.query(query, job_config=_create_query_job_config())
+        results = await asyncio.to_thread(query_job.result)
 
         tables_dict: dict[str, dict[str, Any]] = {}
         for row in results:
@@ -720,7 +746,7 @@ def register_tools(  # noqa: C901
         ORDER BY distance
         """  # noqa: S608
 
-        job_config = bigquery.QueryJobConfig(
+        job_config = _create_query_job_config(
             query_parameters=[bigquery.ScalarQueryParameter("query_text", "STRING", query_text)]
         )
 
@@ -740,6 +766,7 @@ def register_tools(  # noqa: C901
             embedding_model=model,
             distance_type=distance_type.upper(),
             bytes_processed=query_job.total_bytes_processed,
+            max_bytes_billed=get_query_max_bytes_billed(),
             sql_query=reusable_query,
         )
 

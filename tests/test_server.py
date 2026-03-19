@@ -1,6 +1,6 @@
 """Essential unit tests for BigQuery MCP Server focusing on safety and error handling."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from google.cloud.exceptions import GoogleCloudError
@@ -90,6 +90,44 @@ async def test_run_query_bigquery_error():
     assert "Test error" in result["error"]
     # GoogleCloudError gets mapped to GoogleAPICallError in the actual implementation
     assert result["error_type"] in ["GoogleCloudError", "GoogleAPICallError"]
+
+
+@pytest.mark.asyncio
+async def test_run_query_applies_maximum_bytes_billed(monkeypatch):
+    """Test that run_query sets maximum_bytes_billed on query jobs."""
+    monkeypatch.setenv("BIGQUERY_MAX_BYTES_BILLED", "123456")
+
+    from bigquery_mcp.bigquery_tools import register_tools
+
+    tools = {}
+
+    def mock_tool(fn=None, *, description=None):
+        def decorator(func):
+            tools[func.__name__] = func
+            return func
+
+        return decorator(fn) if fn else decorator
+
+    mcp = Mock()
+    mcp.tool = mock_tool
+
+    mock_bigquery_client = Mock()
+    mock_query_job = Mock()
+    mock_results = MagicMock()
+    mock_results.total_rows = 0
+    mock_results.__iter__.return_value = iter([])
+    mock_query_job.result.return_value = mock_results
+    mock_query_job.total_bytes_processed = 42
+    mock_bigquery_client.query.return_value = mock_query_job
+
+    register_tools(mcp, mock_bigquery_client)
+
+    run_query = tools["run_query"]
+    result = await run_query("SELECT 1")
+
+    assert result["success"] is True
+    job_config = mock_bigquery_client.query.call_args.kwargs["job_config"]
+    assert job_config.maximum_bytes_billed == 123456
 
 
 @pytest.mark.asyncio

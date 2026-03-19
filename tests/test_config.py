@@ -99,9 +99,10 @@ def test_allowed_datasets_empty_env_var():
         ("detailed_list_max", "BIGQUERY_LIST_MAX_RESULTS_DETAILED", int),
         ("sample_rows", "BIGQUERY_SAMPLE_ROWS", int),
         ("stats_sample_size", "BIGQUERY_SAMPLE_ROWS_FOR_STATS", int),
+        ("max_bytes_billed", "BIGQUERY_MAX_BYTES_BILLED", int),
     ],
 )
-def test_server_environment_variable_handling(arg_name, env_var, expected_type):
+def test_server_environment_variable_handling(arg_name, env_var, expected_type, monkeypatch):
     """Test that server correctly handles environment variables for configuration."""
     from bigquery_mcp.server import _set_environment_overrides
 
@@ -109,9 +110,7 @@ def test_server_environment_variable_handling(arg_name, env_var, expected_type):
     test_value = 100
     kwargs = {arg_name: test_value}
 
-    # Clear any existing value
-    if env_var in os.environ:
-        del os.environ[env_var]
+    monkeypatch.delenv(env_var, raising=False)
 
     # Call the function
     _set_environment_overrides(**kwargs)
@@ -142,6 +141,7 @@ def test_configuration_defaults(env_vars):
     from bigquery_mcp.bigquery_tools import (
         DEFAULT_LIST_MAX_RESULTS,
         DEFAULT_LIST_MAX_RESULTS_DETAILED,
+        DEFAULT_MAX_BYTES_BILLED,
         DEFAULT_SAMPLE_ROWS,
         DEFAULT_SAMPLE_ROWS_FOR_STATS,
     )
@@ -151,3 +151,4 @@ def test_configuration_defaults(env_vars):
     assert DEFAULT_LIST_MAX_RESULTS_DETAILED == 25
     assert DEFAULT_SAMPLE_ROWS == 3
     assert DEFAULT_SAMPLE_ROWS_FOR_STATS == 500
+    assert DEFAULT_MAX_BYTES_BILLED == 109951162777
