@@ -7,7 +7,9 @@
         "--project",
         "your-project-id",
         "--location",
-        "US"
+        "US",
+        "--max-bytes-billed",
+        "21474836480"
       ]
     }
   }
