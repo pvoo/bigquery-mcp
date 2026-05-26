@@ -21,7 +21,7 @@ classifiers = [
 
 dependencies = [
     "python-dotenv>=1.1.0",
-    "fastmcp==2.13.0",
+    "fastmcp==3.3.1",
     "google-cloud-bigquery==3.31.0",
 ]
 
