@@ -45,7 +45,8 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+# packaging 26.x ships broken (missing submodules); pin until upstream is fixed
+requires = ["hatchling", "packaging<26"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
